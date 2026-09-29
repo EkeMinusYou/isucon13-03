@@ -168,6 +168,12 @@ nginx側のJSON列、識別情報の扱い、設定反映は[nginx access logの
 `tools/analysis/sources.yaml`は、RUN成果物とDuckDB schemaの対応表である。標準成果物だけなら変更しない。
 成果物名・列・DB種別を変更する場合は、次の宣言と読み手（queryを含む）を一つの変更で揃える。
 
+ベンチログに負荷開始・停止のISO時刻がある場合は、`load_phase`で競技固有のYAMLファイルを参照する。
+その`start_pattern`と`end_pattern`で該当行の正規表現を指定する。
+collection marker内に開始・停止が各1行ある場合に解析窓として優先する。
+正規表現は`tools/contest/`へ置き、参照行に`# contest:`を付ける。未設定・未取得時はtraffic thresholdによる推定へ戻る。
+設定の変更後は`task q-build`で既存RUNの解析窓を再計算する。派生DBを再構築しても、保存済みRUNのraw・manifestは変更しない。
+
 1. collectorまたはdigesterの出力宣言
 2. `run.json`へ記録されるartifact契約
 3. `analysis/sources.yaml`のsource

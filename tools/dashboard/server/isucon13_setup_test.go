@@ -1,10 +1,55 @@
 package main
 
 import (
+	"encoding/json"
+	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+func TestISUCON13TimelineCountsConcurrentWarnings(t *testing.T) {
+	if _, err := exec.LookPath("duckdb"); err != nil {
+		t.Skip("duckdb is not installed")
+	}
+	dir := t.TempDir()
+	runID := "20260930-000000"
+	rawDir := filepath.Join(dir, runID, "raw")
+	if err := os.MkdirAll(rawDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	access := `{"msec":"1790720000.1","status":200,"response_time":0.01,"body_bytes":1}`
+	if err := os.WriteFile(filepath.Join(rawDir, "access-host.log"), []byte(access+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	schema, err := os.ReadFile("../../contest/analysis-schema/bench-errors-semantic.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Distinct requests, including identical messages, must each count once.
+	log := "2026-09-29T22:13:20.125Z\twarn\tstaff-logger\trequest canceled\n" +
+		"2026-09-29T22:13:20.125Z\twarn\tstaff-logger\trequest canceled\n" +
+		"2026-09-29T22:13:20.125Z\terror\tstaff-logger\tHTTP 500\n"
+	sql := "CREATE TABLE bench_error_logs(run_id varchar,content varchar,source_artifact varchar);" +
+		"INSERT INTO bench_error_logs VALUES ('" + runID + "','" + strings.ReplaceAll(log, "'", "''") + "','bench.log');" + string(schema)
+	app := &app{runsDir: dir, analysisDB: filepath.Join(t.TempDir(), "analysis.duckdb")}
+	if out, err := exec.Command("duckdb", app.analysisDB, "-c", sql).CombinedOutput(); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	r := httptest.NewRequest("GET", "/api/runs/"+runID+"/timeline", nil)
+	r.SetPathValue("run_id", runID)
+	w := httptest.NewRecorder()
+	app.handleTimeline(w, r)
+	var got timelineResponse
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &got) != nil {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body)
+	}
+	if len(got.BenchErrors) != 3 || len(got.Buckets) != 1 || got.Buckets[0].ScenarioWarnings != 3 {
+		t.Fatalf("concurrent warning counts: %+v", got)
+	}
+}
 
 func TestISUCON13SetupSmokeReaders(t *testing.T) {
 	dir := os.Getenv("ISUCON_SETUP_SMOKE")

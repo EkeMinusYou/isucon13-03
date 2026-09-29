@@ -1,0 +1,40 @@
+{
+  "run_id": "20260930-065458",
+  "repair_date": "2026-09-30",
+  "smoke_dir": ".task/setup-smoke-20260930-071510",
+  "query_engine": "task q / DuckDB",
+  "load_window": [
+    {
+      "run_id": "20260930-065458",
+      "started_at": "2026-09-30 06:55:46.655+09",
+      "ended_at": "2026-09-30 06:56:46.656+09",
+      "duration_seconds": 60.001,
+      "source": "bench.log-load-phase",
+      "status": "ok",
+      "reason": ""
+    }
+  ],
+  "warnings": [
+    {
+      "messages": 66,
+      "events": 66
+    }
+  ],
+  "smoke_app_digest": [
+    {
+      "host": "isucon-1",
+      "app_parameterized_selects": 58,
+      "livestream_tags_selects": 8
+    },
+    {
+      "host": "isucon-2",
+      "app_parameterized_selects": 53,
+      "livestream_tags_selects": 8
+    },
+    {
+      "host": "isucon-3",
+      "app_parameterized_selects": 53,
+      "livestream_tags_selects": 8
+    }
+  ]
+}

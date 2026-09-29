@@ -1,5 +1,7 @@
 version: 1
 
+load_phase: ../contest/load-phase.yaml # contest: Explicit benchmark load timestamps.
+
 base_schema: schema/00-base.sql
 semantic_schemas:
   - schema/semantic.sql

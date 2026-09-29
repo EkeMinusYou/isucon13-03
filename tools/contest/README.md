@@ -10,6 +10,7 @@
 | ファイル | 読む側 | 内容 |
 | --- | --- | --- |
 | `bench-patterns.json` | `tools/bench-output` | ベンチ出力のscore・合否正規表現。coreは形式を持たない |
+| `load-phase.yaml` | `tools/analysisctl` | ベンチログの実負荷開始・停止行の正規表現 |
 | `user-transition-routes.json` | `tools/user-transition-metrics` | Cookie列と正規化routeの宣言 |
 | `analysis-schema/` | `tools/analysis/sources.yaml` | ベンチログの解釈をDuckDBのviewにするschema。エラー行の意味ビューとscore集計 |
 | `smoke/` | `task setup-smoke` | ベンチを使わず計測経路を確認する、当日のセッションフローのGo実装 |

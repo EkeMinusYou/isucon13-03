@@ -1,0 +1,961 @@
+{
+  "run_id": "20260930-065458",
+  "review_date": "2026-09-30",
+  "query_engine": "task q / DuckDB",
+  "source_commit": "9d789426c8e3db4be86f5d96948e7923bcde5a93",
+  "artifacts": [
+    {
+      "status": "ok",
+      "artifacts": 72,
+      "bytes": 7874044
+    },
+    {
+      "status": "empty",
+      "artifacts": 2,
+      "bytes": 0
+    }
+  ],
+  "artifact_exceptions": [
+    {
+      "name": "isucon-3-pt-query-digest.json",
+      "status": "empty",
+      "quality_status": "invalid",
+      "quality_reason": "",
+      "reason": ""
+    },
+    {
+      "name": "isucon-2-pt-query-digest.json",
+      "status": "empty",
+      "quality_status": "invalid",
+      "quality_reason": "",
+      "reason": ""
+    }
+  ],
+  "analysis_windows": [
+    {
+      "run_id": "20260930-065458",
+      "started_at": "2026-09-30 06:55:36+09",
+      "ended_at": "2026-09-30 06:56:47.533078+09",
+      "source": "traffic-threshold",
+      "status": "ok",
+      "reason": "traffic start detected; collection end used because the end threshold was not observed",
+      "request_count": 3650,
+      "active_seconds": 67,
+      "start_threshold": 10,
+      "start_consecutive": 2,
+      "end_threshold": 5,
+      "end_consecutive": 3
+    }
+  ],
+  "load_windows": [
+    {
+      "run_id": "20260930-065458",
+      "started_at": "2026-09-30 06:55:36+09",
+      "ended_at": "2026-09-30 06:56:47.533078+09",
+      "duration_seconds": 71.533,
+      "source": "traffic-threshold",
+      "status": "ok",
+      "reason": "traffic start detected; collection end used because the end threshold was not observed"
+    }
+  ],
+  "score": [
+    {
+      "run_id": "20260930-065458",
+      "score": 3615,
+      "passed": true,
+      "addition": null,
+      "deduction": null,
+      "source_artifact": "bench.log"
+    }
+  ],
+  "metric_samples": [
+    {
+      "host": "isucon-1",
+      "source": "disk",
+      "samples": 71,
+      "first_sample": "2026-09-30 06:55:36.899977+09",
+      "last_sample": "2026-09-30 06:56:46.899543+09",
+      "nonfinite": 0
+    },
+    {
+      "host": "isucon-1",
+      "source": "mysql",
+      "samples": 72,
+      "first_sample": "2026-09-30 06:55:36.105743+09",
+      "last_sample": "2026-09-30 06:56:47.105605+09",
+      "nonfinite": 0
+    },
+    {
+      "host": "isucon-1",
+      "source": "proc",
+      "samples": 71,
+      "first_sample": "2026-09-30 06:55:36.899977+09",
+      "last_sample": "2026-09-30 06:56:46.899543+09",
+      "nonfinite": 0
+    },
+    {
+      "host": "isucon-1",
+      "source": "service",
+      "samples": 71,
+      "first_sample": "2026-09-30 06:55:36.899977+09",
+      "last_sample": "2026-09-30 06:56:46.899543+09",
+      "nonfinite": 0
+    },
+    {
+      "host": "isucon-1",
+      "source": "sql_pool",
+      "samples": 72,
+      "first_sample": "2026-09-30 06:55:36.116+09",
+      "last_sample": "2026-09-30 06:56:47.116+09",
+      "nonfinite": 0
+    },
+    {
+      "host": "isucon-2",
+      "source": "disk",
+      "samples": 71,
+      "first_sample": "2026-09-30 06:55:36.861592+09",
+      "last_sample": "2026-09-30 06:56:46.862159+09",
+      "nonfinite": 0
+    },
+    {
+      "host": "isucon-2",
+      "source": "mysql",
+      "samples": 72,
+      "first_sample": "2026-09-30 06:55:36.113689+09",
+      "last_sample": "2026-09-30 06:56:47.113692+09",
+      "nonfinite": 0
+    },
+    {
+      "host": "isucon-2",
+      "source": "proc",
+      "samples": 71,
+      "first_sample": "2026-09-30 06:55:36.861592+09",
+      "last_sample": "2026-09-30 06:56:46.862159+09",
+      "nonfinite": 0
+    },
+    {
+      "host": "isucon-2",
+      "source": "service",
+      "samples": 71,
+      "first_sample": "2026-09-30 06:55:36.861592+09",
+      "last_sample": "2026-09-30 06:56:46.862159+09",
+      "nonfinite": 0
+    },
+    {
+      "host": "isucon-2",
+      "source": "sql_pool",
+      "samples": 72,
+      "first_sample": "2026-09-30 06:55:36.181+09",
+      "last_sample": "2026-09-30 06:56:47.18+09",
+      "nonfinite": 0
+    },
+    {
+      "host": "isucon-3",
+      "source": "disk",
+      "samples": 71,
+      "first_sample": "2026-09-30 06:55:36.921494+09",
+      "last_sample": "2026-09-30 06:56:46.922167+09",
+      "nonfinite": 0
+    },
+    {
+      "host": "isucon-3",
+      "source": "mysql",
+      "samples": 72,
+      "first_sample": "2026-09-30 06:55:36.105246+09",
+      "last_sample": "2026-09-30 06:56:47.105255+09",
+      "nonfinite": 0
+    },
+    {
+      "host": "isucon-3",
+      "source": "proc",
+      "samples": 71,
+      "first_sample": "2026-09-30 06:55:36.921494+09",
+      "last_sample": "2026-09-30 06:56:46.922167+09",
+      "nonfinite": 0
+    },
+    {
+      "host": "isucon-3",
+      "source": "service",
+      "samples": 71,
+      "first_sample": "2026-09-30 06:55:36.921494+09",
+      "last_sample": "2026-09-30 06:56:46.922167+09",
+      "nonfinite": 0
+    },
+    {
+      "host": "isucon-3",
+      "source": "sql_pool",
+      "samples": 72,
+      "first_sample": "2026-09-30 06:55:36.166+09",
+      "last_sample": "2026-09-30 06:56:47.166+09",
+      "nonfinite": 0
+    }
+  ],
+  "profiles": [
+    {
+      "host": "isucon-1",
+      "profile_type": "fgprof",
+      "sample_type": "samples",
+      "value_unit": "count",
+      "collected_at": "2026-09-30 06:55:00.344927+09",
+      "duration_seconds": 180.002998633,
+      "total": 489000.0,
+      "sample_count": 1104,
+      "incomplete_samples": 0
+    },
+    {
+      "host": "isucon-1",
+      "profile_type": "fgprof",
+      "sample_type": "time",
+      "value_unit": "seconds",
+      "collected_at": "2026-09-30 06:55:00.344927+09",
+      "duration_seconds": 180.002998633,
+      "total": 4939.394,
+      "sample_count": 1104,
+      "incomplete_samples": 0
+    },
+    {
+      "host": "isucon-1",
+      "profile_type": "go-allocs",
+      "sample_type": "alloc_objects",
+      "value_unit": "count",
+      "collected_at": "2026-09-30 06:56:00.353763+09",
+      "duration_seconds": 0.0,
+      "total": 3347490.0,
+      "sample_count": 354,
+      "incomplete_samples": 0
+    },
+    {
+      "host": "isucon-1",
+      "profile_type": "go-allocs",
+      "sample_type": "alloc_space",
+      "value_unit": "bytes",
+      "collected_at": "2026-09-30 06:56:00.353763+09",
+      "duration_seconds": 0.0,
+      "total": 426423783.0,
+      "sample_count": 354,
+      "incomplete_samples": 0
+    },
+    {
+      "host": "isucon-1",
+      "profile_type": "go-allocs",
+      "sample_type": "inuse_objects",
+      "value_unit": "count",
+      "collected_at": "2026-09-30 06:56:00.353763+09",
+      "duration_seconds": 0.0,
+      "total": 59205.0,
+      "sample_count": 8,
+      "incomplete_samples": 0
+    },
+    {
+      "host": "isucon-1",
+      "profile_type": "go-allocs",
+      "sample_type": "inuse_space",
+      "value_unit": "bytes",
+      "collected_at": "2026-09-30 06:56:00.353763+09",
+      "duration_seconds": 0.0,
+      "total": 7200620.0,
+      "sample_count": 8,
+      "incomplete_samples": 0
+    },
+    {
+      "host": "isucon-1",
+      "profile_type": "go-cpu",
+      "sample_type": "cpu",
+      "value_unit": "seconds",
+      "collected_at": "2026-09-30 06:55:00.340888+09",
+      "duration_seconds": 180.001381567,
+      "total": 21.59,
+      "sample_count": 1453,
+      "incomplete_samples": 0
+    },
+    {
+      "host": "isucon-1",
+      "profile_type": "go-cpu",
+      "sample_type": "samples",
+      "value_unit": "count",
+      "collected_at": "2026-09-30 06:55:00.340888+09",
+      "duration_seconds": 180.001381567,
+      "total": 2159.0,
+      "sample_count": 1453,
+      "incomplete_samples": 0
+    },
+    {
+      "host": "isucon-1",
+      "profile_type": "go-goroutine",
+      "sample_type": "goroutine",
+      "value_unit": "count",
+      "collected_at": "2026-09-30 06:56:00.365512+09",
+      "duration_seconds": 0.0,
+      "total": 68.0,
+      "sample_count": 29,
+      "incomplete_samples": 1
+    },
+    {
+      "host": "isucon-1",
+      "profile_type": "go-heap",
+      "sample_type": "alloc_objects",
+      "value_unit": "count",
+      "collected_at": "2026-09-30 06:56:00.367713+09",
+      "duration_seconds": 0.0,
+      "total": 3347490.0,
+      "sample_count": 354,
+      "incomplete_samples": 0
+    },
+    {
+      "host": "isucon-1",
+      "profile_type": "go-heap",
+      "sample_type": "alloc_space",
+      "value_unit": "bytes",
+      "collected_at": "2026-09-30 06:56:00.367713+09",
+      "duration_seconds": 0.0,
+      "total": 426423783.0,
+      "sample_count": 354,
+      "incomplete_samples": 0
+    },
+    {
+      "host": "isucon-1",
+      "profile_type": "go-heap",
+      "sample_type": "inuse_objects",
+      "value_unit": "count",
+      "collected_at": "2026-09-30 06:56:00.367713+09",
+      "duration_seconds": 0.0,
+      "total": 59205.0,
+      "sample_count": 8,
+      "incomplete_samples": 0
+    },
+    {
+      "host": "isucon-1",
+      "profile_type": "go-heap",
+      "sample_type": "inuse_space",
+      "value_unit": "bytes",
+      "collected_at": "2026-09-30 06:56:00.367713+09",
+      "duration_seconds": 0.0,
+      "total": 7200620.0,
+      "sample_count": 8,
+      "incomplete_samples": 0
+    },
+    {
+      "host": "isucon-2",
+      "profile_type": "fgprof",
+      "sample_type": "samples",
+      "value_unit": "count",
+      "collected_at": "2026-09-30 06:55:00.329115+09",
+      "duration_seconds": 180.000376161,
+      "total": 178200.0,
+      "sample_count": 10,
+      "incomplete_samples": 0
+    },
+    {
+      "host": "isucon-2",
+      "profile_type": "fgprof",
+      "sample_type": "time",
+      "value_unit": "seconds",
+      "collected_at": "2026-09-30 06:55:00.329115+09",
+      "duration_seconds": 180.000376161,
+      "total": 1800.0,
+      "sample_count": 10,
+      "incomplete_samples": 0
+    },
+    {
+      "host": "isucon-2",
+      "profile_type": "go-allocs",
+      "sample_type": "alloc_objects",
+      "value_unit": "count",
+      "collected_at": "2026-09-30 06:56:00.345448+09",
+      "duration_seconds": 0.0,
+      "total": 209695.0,
+      "sample_count": 29,
+      "incomplete_samples": 0
+    },
+    {
+      "host": "isucon-2",
+      "profile_type": "go-allocs",
+      "sample_type": "alloc_space",
+      "value_unit": "bytes",
+      "collected_at": "2026-09-30 06:56:00.345448+09",
+      "duration_seconds": 0.0,
+      "total": 38665644.0,
+      "sample_count": 29,
+      "incomplete_samples": 0
+    },
+    {
+      "host": "isucon-2",
+      "profile_type": "go-allocs",
+      "sample_type": "inuse_objects",
+      "value_unit": "count",
+      "collected_at": "2026-09-30 06:56:00.345448+09",
+      "duration_seconds": 0.0,
+      "total": 3282.0,
+      "sample_count": 3,
+      "incomplete_samples": 0
+    },
+    {
+      "host": "isucon-2",
+      "profile_type": "go-allocs",
+      "sample_type": "inuse_space",
+      "value_unit": "bytes",
+      "collected_at": "2026-09-30 06:56:00.345448+09",
+      "duration_seconds": 0.0,
+      "total": 2329615.0,
+      "sample_count": 3,
+      "incomplete_samples": 0
+    },
+    {
+      "host": "isucon-2",
+      "profile_type": "go-cpu",
+      "sample_type": "cpu",
+      "value_unit": "seconds",
+      "collected_at": "2026-09-30 06:55:00.335606+09",
+      "duration_seconds": 180.000665664,
+      "total": 1.4,
+      "sample_count": 91,
+      "incomplete_samples": 0
+    },
+    {
+      "host": "isucon-2",
+      "profile_type": "go-cpu",
+      "sample_type": "samples",
+      "value_unit": "count",
+      "collected_at": "2026-09-30 06:55:00.335606+09",
+      "duration_seconds": 180.000665664,
+      "total": 140.0,
+      "sample_count": 91,
+      "incomplete_samples": 0
+    },
+    {
+      "host": "isucon-2",
+      "profile_type": "go-goroutine",
+      "sample_type": "goroutine",
+      "value_unit": "count",
+      "collected_at": "2026-09-30 06:56:00.351235+09",
+      "duration_seconds": 0.0,
+      "total": 15.0,
+      "sample_count": 13,
+      "incomplete_samples": 1
+    },
+    {
+      "host": "isucon-2",
+      "profile_type": "go-heap",
+      "sample_type": "alloc_objects",
+      "value_unit": "count",
+      "collected_at": "2026-09-30 06:56:00.351035+09",
+      "duration_seconds": 0.0,
+      "total": 209695.0,
+      "sample_count": 29,
+      "incomplete_samples": 0
+    },
+    {
+      "host": "isucon-2",
+      "profile_type": "go-heap",
+      "sample_type": "alloc_space",
+      "value_unit": "bytes",
+      "collected_at": "2026-09-30 06:56:00.351035+09",
+      "duration_seconds": 0.0,
+      "total": 38665644.0,
+      "sample_count": 29,
+      "incomplete_samples": 0
+    },
+    {
+      "host": "isucon-2",
+      "profile_type": "go-heap",
+      "sample_type": "inuse_objects",
+      "value_unit": "count",
+      "collected_at": "2026-09-30 06:56:00.351035+09",
+      "duration_seconds": 0.0,
+      "total": 3282.0,
+      "sample_count": 3,
+      "incomplete_samples": 0
+    },
+    {
+      "host": "isucon-2",
+      "profile_type": "go-heap",
+      "sample_type": "inuse_space",
+      "value_unit": "bytes",
+      "collected_at": "2026-09-30 06:56:00.351035+09",
+      "duration_seconds": 0.0,
+      "total": 2329615.0,
+      "sample_count": 3,
+      "incomplete_samples": 0
+    },
+    {
+      "host": "isucon-3",
+      "profile_type": "fgprof",
+      "sample_type": "samples",
+      "value_unit": "count",
+      "collected_at": "2026-09-30 06:55:00.343878+09",
+      "duration_seconds": 180.003748977,
+      "total": 178199.0,
+      "sample_count": 11,
+      "incomplete_samples": 0
+    },
+    {
+      "host": "isucon-3",
+      "profile_type": "fgprof",
+      "sample_type": "time",
+      "value_unit": "seconds",
+      "collected_at": "2026-09-30 06:55:00.343878+09",
+      "duration_seconds": 180.003748977,
+      "total": 1799.99,
+      "sample_count": 11,
+      "incomplete_samples": 0
+    },
+    {
+      "host": "isucon-3",
+      "profile_type": "go-allocs",
+      "sample_type": "alloc_objects",
+      "value_unit": "count",
+      "collected_at": "2026-09-30 06:56:00.355594+09",
+      "duration_seconds": 0.0,
+      "total": 109993.0,
+      "sample_count": 31,
+      "incomplete_samples": 0
+    },
+    {
+      "host": "isucon-3",
+      "profile_type": "go-allocs",
+      "sample_type": "alloc_space",
+      "value_unit": "bytes",
+      "collected_at": "2026-09-30 06:56:00.355594+09",
+      "duration_seconds": 0.0,
+      "total": 43568589.0,
+      "sample_count": 31,
+      "incomplete_samples": 0
+    },
+    {
+      "host": "isucon-3",
+      "profile_type": "go-allocs",
+      "sample_type": "inuse_objects",
+      "value_unit": "count",
+      "collected_at": "2026-09-30 06:56:00.355594+09",
+      "duration_seconds": 0.0,
+      "total": 9363.0,
+      "sample_count": 3,
+      "incomplete_samples": 0
+    },
+    {
+      "host": "isucon-3",
+      "profile_type": "go-allocs",
+      "sample_type": "inuse_space",
+      "value_unit": "bytes",
+      "collected_at": "2026-09-30 06:56:00.355594+09",
+      "duration_seconds": 0.0,
+      "total": 2261384.0,
+      "sample_count": 3,
+      "incomplete_samples": 0
+    },
+    {
+      "host": "isucon-3",
+      "profile_type": "go-cpu",
+      "sample_type": "cpu",
+      "value_unit": "seconds",
+      "collected_at": "2026-09-30 06:55:00.340467+09",
+      "duration_seconds": 180.000510527,
+      "total": 1.47,
+      "sample_count": 118,
+      "incomplete_samples": 0
+    },
+    {
+      "host": "isucon-3",
+      "profile_type": "go-cpu",
+      "sample_type": "samples",
+      "value_unit": "count",
+      "collected_at": "2026-09-30 06:55:00.340467+09",
+      "duration_seconds": 180.000510527,
+      "total": 147.0,
+      "sample_count": 118,
+      "incomplete_samples": 0
+    },
+    {
+      "host": "isucon-3",
+      "profile_type": "go-goroutine",
+      "sample_type": "goroutine",
+      "value_unit": "count",
+      "collected_at": "2026-09-30 06:56:00.355919+09",
+      "duration_seconds": 0.0,
+      "total": 15.0,
+      "sample_count": 12,
+      "incomplete_samples": 0
+    },
+    {
+      "host": "isucon-3",
+      "profile_type": "go-heap",
+      "sample_type": "alloc_objects",
+      "value_unit": "count",
+      "collected_at": "2026-09-30 06:56:00.345772+09",
+      "duration_seconds": 0.0,
+      "total": 98883.0,
+      "sample_count": 30,
+      "incomplete_samples": 0
+    },
+    {
+      "host": "isucon-3",
+      "profile_type": "go-heap",
+      "sample_type": "alloc_space",
+      "value_unit": "bytes",
+      "collected_at": "2026-09-30 06:56:00.345772+09",
+      "duration_seconds": 0.0,
+      "total": 41470661.0,
+      "sample_count": 30,
+      "incomplete_samples": 0
+    },
+    {
+      "host": "isucon-3",
+      "profile_type": "go-heap",
+      "sample_type": "inuse_objects",
+      "value_unit": "count",
+      "collected_at": "2026-09-30 06:56:00.345772+09",
+      "duration_seconds": 0.0,
+      "total": 9363.0,
+      "sample_count": 3,
+      "incomplete_samples": 0
+    },
+    {
+      "host": "isucon-3",
+      "profile_type": "go-heap",
+      "sample_type": "inuse_space",
+      "value_unit": "bytes",
+      "collected_at": "2026-09-30 06:56:00.345772+09",
+      "duration_seconds": 0.0,
+      "total": 2261384.0,
+      "sample_count": 3,
+      "incomplete_samples": 0
+    }
+  ],
+  "http_by_ingress": [
+    {
+      "ingress_host": "isucon-1",
+      "requests": 3669,
+      "status_2xx": 3636,
+      "status_4xx": 31,
+      "status_5xx": 2
+    },
+    {
+      "ingress_host": "isucon-2",
+      "requests": 1,
+      "status_2xx": 0,
+      "status_4xx": 1,
+      "status_5xx": 0
+    },
+    {
+      "ingress_host": "isucon-3",
+      "requests": 1,
+      "status_2xx": 0,
+      "status_4xx": 1,
+      "status_5xx": 0
+    }
+  ],
+  "queries": [
+    {
+      "host": "isucon-1",
+      "source": "digest",
+      "query_groups": 54,
+      "calls": 14426,
+      "sum_query_seconds": 29.599,
+      "errors": 0
+    },
+    {
+      "host": "isucon-1",
+      "source": "slp",
+      "query_groups": 58,
+      "calls": 12499,
+      "sum_query_seconds": 340.202,
+      "errors": 0
+    },
+    {
+      "host": "isucon-2",
+      "source": "digest",
+      "query_groups": 7,
+      "calls": 4022,
+      "sum_query_seconds": 1.137,
+      "errors": 0
+    },
+    {
+      "host": "isucon-3",
+      "source": "digest",
+      "query_groups": 7,
+      "calls": 4024,
+      "sum_query_seconds": 1.276,
+      "errors": 0
+    }
+  ],
+  "lock_samples": [
+    {
+      "host": "isucon-1",
+      "samples": 1431,
+      "first_sample": "2026-09-30 06:55:36.027151+09",
+      "last_sample": "2026-09-30 06:56:47.527157+09",
+      "max_waits": 1,
+      "capture_errors": 2
+    },
+    {
+      "host": "isucon-2",
+      "samples": 1431,
+      "first_sample": "2026-09-30 06:55:36.003913+09",
+      "last_sample": "2026-09-30 06:56:47.503753+09",
+      "max_waits": 0,
+      "capture_errors": 0
+    },
+    {
+      "host": "isucon-3",
+      "samples": 1431,
+      "first_sample": "2026-09-30 06:55:36.002764+09",
+      "last_sample": "2026-09-30 06:56:47.503173+09",
+      "max_waits": 0,
+      "capture_errors": 0
+    }
+  ],
+  "lock_errors": [
+    {
+      "host": "isucon-1",
+      "timestamp": "2026-09-30 06:55:51.627547+09",
+      "capture_error": "context deadline exceeded"
+    },
+    {
+      "host": "isucon-1",
+      "timestamp": "2026-09-30 06:56:42.477708+09",
+      "capture_error": "context deadline exceeded"
+    }
+  ],
+  "observed_waits": [
+    {
+      "host": "isucon-3",
+      "first_wait": "2026-09-30 06:55:36.002764+09",
+      "last_wait": "2026-09-30 06:56:47.503173+09",
+      "samples_with_waits": 0,
+      "observed_wait_rows": 0
+    },
+    {
+      "host": "isucon-2",
+      "first_wait": "2026-09-30 06:55:36.003913+09",
+      "last_wait": "2026-09-30 06:56:47.503753+09",
+      "samples_with_waits": 0,
+      "observed_wait_rows": 0
+    },
+    {
+      "host": "isucon-1",
+      "first_wait": "2026-09-30 06:55:36.027151+09",
+      "last_wait": "2026-09-30 06:56:47.527157+09",
+      "samples_with_waits": 5,
+      "observed_wait_rows": 5
+    }
+  ],
+  "user_transitions": [
+    {
+      "edges": 102,
+      "api_requests": 3668,
+      "classified_requests": 3668,
+      "identified_requests": 3443,
+      "sessions": 203,
+      "transitions": 3240,
+      "unmatched_api_requests": 0,
+      "missing_identity_requests": 225,
+      "malformed_lines": 0,
+      "invalid_time_lines": 0,
+      "edge_transition_sum": 3240
+    }
+  ],
+  "identity_causes": [
+    {
+      "reason": "anonymous-public-or-failed-auth",
+      "requests": 9
+    },
+    {
+      "reason": "client-aborted-before-response-header",
+      "requests": 19
+    },
+    {
+      "reason": "registration-before-login",
+      "requests": 197
+    }
+  ],
+  "scenarios": [
+    {
+      "run_id": "20260930-065458",
+      "scenario": "viewer",
+      "successes": 15,
+      "failures": 2,
+      "source_artifact": "bench.log"
+    },
+    {
+      "run_id": "20260930-065458",
+      "scenario": "viewer-spam",
+      "successes": 43,
+      "failures": 0,
+      "source_artifact": "bench.log"
+    },
+    {
+      "run_id": "20260930-065458",
+      "scenario": "viewer-report",
+      "successes": 38,
+      "failures": 4,
+      "source_artifact": "bench.log"
+    },
+    {
+      "run_id": "20260930-065458",
+      "scenario": "streamer-moderate",
+      "successes": 26,
+      "failures": 0,
+      "source_artifact": "bench.log"
+    },
+    {
+      "run_id": "20260930-065458",
+      "scenario": "streamer-cold-reserve",
+      "successes": 60,
+      "failures": 0,
+      "source_artifact": "bench.log"
+    },
+    {
+      "run_id": "20260930-065458",
+      "scenario": "dns-watertorture-attack",
+      "successes": 16,
+      "failures": 0,
+      "source_artifact": "bench.log"
+    },
+    {
+      "run_id": "20260930-065458",
+      "scenario": "aggressive-streamer-moderate",
+      "successes": 40,
+      "failures": 1,
+      "source_artifact": "bench.log"
+    }
+  ],
+  "warning_causes": [
+    {
+      "events": 66,
+      "cancellations": 65,
+      "http_500_warnings": 1
+    }
+  ],
+  "timeline_counts": [
+    {
+      "displayed_warning_count": 5,
+      "requests": 3671
+    }
+  ],
+  "exact_load_metric_samples": [
+    {
+      "host": "isucon-1",
+      "source": "disk",
+      "samples": 61,
+      "first_sample": "2026-09-30 06:55:46.899548+09",
+      "last_sample": "2026-09-30 06:56:46.899543+09"
+    },
+    {
+      "host": "isucon-1",
+      "source": "mysql",
+      "samples": 61,
+      "first_sample": "2026-09-30 06:55:47.106454+09",
+      "last_sample": "2026-09-30 06:56:47.105605+09"
+    },
+    {
+      "host": "isucon-1",
+      "source": "proc",
+      "samples": 61,
+      "first_sample": "2026-09-30 06:55:46.899548+09",
+      "last_sample": "2026-09-30 06:56:46.899543+09"
+    },
+    {
+      "host": "isucon-1",
+      "source": "service",
+      "samples": 61,
+      "first_sample": "2026-09-30 06:55:46.899548+09",
+      "last_sample": "2026-09-30 06:56:46.899543+09"
+    },
+    {
+      "host": "isucon-1",
+      "source": "sql_pool",
+      "samples": 61,
+      "first_sample": "2026-09-30 06:55:47.116+09",
+      "last_sample": "2026-09-30 06:56:47.116+09"
+    },
+    {
+      "host": "isucon-2",
+      "source": "disk",
+      "samples": 61,
+      "first_sample": "2026-09-30 06:55:46.861705+09",
+      "last_sample": "2026-09-30 06:56:46.862159+09"
+    },
+    {
+      "host": "isucon-2",
+      "source": "mysql",
+      "samples": 61,
+      "first_sample": "2026-09-30 06:55:47.113725+09",
+      "last_sample": "2026-09-30 06:56:47.113692+09"
+    },
+    {
+      "host": "isucon-2",
+      "source": "proc",
+      "samples": 61,
+      "first_sample": "2026-09-30 06:55:46.861705+09",
+      "last_sample": "2026-09-30 06:56:46.862159+09"
+    },
+    {
+      "host": "isucon-2",
+      "source": "service",
+      "samples": 61,
+      "first_sample": "2026-09-30 06:55:46.861705+09",
+      "last_sample": "2026-09-30 06:56:46.862159+09"
+    },
+    {
+      "host": "isucon-2",
+      "source": "sql_pool",
+      "samples": 61,
+      "first_sample": "2026-09-30 06:55:47.18+09",
+      "last_sample": "2026-09-30 06:56:47.18+09"
+    },
+    {
+      "host": "isucon-3",
+      "source": "disk",
+      "samples": 61,
+      "first_sample": "2026-09-30 06:55:46.922412+09",
+      "last_sample": "2026-09-30 06:56:46.922167+09"
+    },
+    {
+      "host": "isucon-3",
+      "source": "mysql",
+      "samples": 61,
+      "first_sample": "2026-09-30 06:55:47.10527+09",
+      "last_sample": "2026-09-30 06:56:47.105255+09"
+    },
+    {
+      "host": "isucon-3",
+      "source": "proc",
+      "samples": 61,
+      "first_sample": "2026-09-30 06:55:46.922412+09",
+      "last_sample": "2026-09-30 06:56:46.922167+09"
+    },
+    {
+      "host": "isucon-3",
+      "source": "service",
+      "samples": 61,
+      "first_sample": "2026-09-30 06:55:46.922412+09",
+      "last_sample": "2026-09-30 06:56:46.922167+09"
+    },
+    {
+      "host": "isucon-3",
+      "source": "sql_pool",
+      "samples": 61,
+      "first_sample": "2026-09-30 06:55:47.166+09",
+      "last_sample": "2026-09-30 06:56:47.166+09"
+    }
+  ],
+  "counter_resets": [],
+  "unknown_goroutine_stacks": [
+    {
+      "host": "isucon-1",
+      "profile_type": "go-goroutine",
+      "sample_type": "goroutine",
+      "sample_id": 5,
+      "value": 3.0,
+      "stack_depth": 1
+    },
+    {
+      "host": "isucon-2",
+      "profile_type": "go-goroutine",
+      "sample_type": "goroutine",
+      "sample_id": 2,
+      "value": 2.0,
+      "stack_depth": 1
+    }
+  ]
+}

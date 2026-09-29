@@ -65,6 +65,9 @@ func connectDB(logger echo.Logger) (*sqlx.DB, error) {
 	conf.Passwd = "isucon"
 	conf.DBName = "isupipe"
 	conf.ParseTime = true
+	// MySQL 8.0 does not digest binary-protocol prepared executions.
+	// Let the driver escape parameters so application SQL remains observable.
+	conf.InterpolateParams = true
 
 	if v, ok := os.LookupEnv(networkTypeEnvKey); ok {
 		conf.Net = v

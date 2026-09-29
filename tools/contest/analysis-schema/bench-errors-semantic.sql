@@ -42,7 +42,8 @@ from isupipe_bench_lines
 where regexp_matches(line, '\t(?:warn|error)\t') or starts_with(line, 'BENCHMARK_FAIL');
 
 create or replace view bench_warning_events as
-select distinct run_id, occurred_at from isupipe_bench_lines
+-- Several independent requests can fail at the same millisecond.
+select run_id, occurred_at from isupipe_bench_lines
 where occurred_at is not null and regexp_matches(line, '\t(?:warn|error)\t');
 
 -- No cumulative error-count time series is present in the observed output.
