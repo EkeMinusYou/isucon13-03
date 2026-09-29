@@ -58,7 +58,7 @@ vars:
   # >>> contest values >>>
   # Contest topology. Keep host roles and private addresses here only.
   ALL_HOSTS: isucon-1 isucon-2 isucon-3
-  BENCH_HOST: ''
+  BENCH_HOST: isucon-bench
   IP:
     map:
       isucon-1: 172.31.40.191
@@ -82,8 +82,10 @@ vars:
   ALL_HOST_IPS: '{{range (splitList " " .ALL_HOSTS)}}{{.}}={{index $.IP .}} {{end}}'
 
   # >>> contest values >>>
-  BENCH_TARGET: http://{{.ENTRY_IP}}
-  BENCH_COMMAND: ''
+  BENCH_TARGET: https://pipe.u.isucon.dev
+  BENCH_COMMAND: >-
+    ./bench_linux_amd64 run --target {{.BENCH_TARGET}} --nameserver 172.31.40.191
+    --enable-ssl --webapp 54.250.213.246 --webapp 18.177.140.41 --webapp 13.231.248.152
   BENCH_SSH_OPTIONS: ''
   # <<< contest values <<<
 

@@ -12,8 +12,8 @@ ISUCONの競技サーバーを、ローカルのリポジトリを正本とし�
 この環境は`isucon-1`〜`isucon-3`をセットアップ済みです。各ホストのGo・nginx・MySQL・PowerDNSを管理します。
 構成・標準計測の確認結果は[セットアップ報告](docs/setup-report.md)を参照してください。
 
-ベンチはユーザーが実行します。`task bench-manual`の開始案内後すぐに負荷走行を開始し、
-完了後に結果原文の保存先、スコア、合否を入力してください。profileは180秒、snapshotは開始60秒後です。
+ベンチはユーザーが`task bench`で実行します。`isucon-bench`でベンチを起動し、計測結果を自動回収します。
+profileは180秒、snapshotは開始60秒後です。
 通常回収では失敗RUNも保存し、分析DBを同期します。`after-bench`は成果物をローカルGit commitします。
 
 `task db-recreate`は3台それぞれの`isupipe`と`isudns`を破棄して公式schemaから作り直します。
@@ -119,7 +119,9 @@ task bench-manual
 整合性チェックの結果を入力します。原文は同じRUNの`benchmark-result.txt`へ保存します。
 スコアが分からない場合は空欄にし、0点と区別します。
 
-ベンチホストから実行できる場合は、`BENCH_COMMAND`を更新して次を使います。
+`Taskfile.yml`の`BENCH_HOST`と`BENCH_COMMAND`は設定済みです。次のコマンドで`isucon-bench`へ接続し、
+`isucon`ユーザーの`/home/isucon`でベンチを実行します。対象は`https://pipe.u.isucon.dev`、
+nameserverは`172.31.40.191`、webappは`54.250.213.246`・`18.177.140.41`・`13.231.248.152`です。
 
 ```shell
 task bench
