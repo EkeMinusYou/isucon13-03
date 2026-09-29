@@ -1,4 +1,4 @@
-# ISUCON template
+# ISUCON13
 
 ISUCONの競技サーバーを、ローカルのリポジトリを正本としてセットアップ・デプロイし、
 ベンチ1回ごとのログ・メトリクス・profileを同じ`RUN_ID`へ回収するためのテンプレートです。
@@ -8,6 +8,17 @@ ISUCONの競技サーバーを、ローカルのリポジトリを正本とし�
 競技中の変更は[ISUCONでの変更方針](AGENTS.md#isuconでの変更方針)に従います。
 依頼された改善に必要なDB再作成や不要ファイルの削除などの破壊的変更を許容し、
 切り戻し専用の仕組みや旧実装の保持は求めません。公式の正当性・永続性・追試要件は維持します。
+
+この環境は`isucon-1`〜`isucon-3`をセットアップ済みです。各ホストのGo・nginx・MySQL・PowerDNSを管理します。
+構成・標準計測の確認結果は[セットアップ報告](docs/setup-report.md)を参照してください。
+
+ベンチはユーザーが実行します。`task bench-manual`の開始案内後すぐに負荷走行を開始し、
+完了後に結果原文の保存先、スコア、合否を入力してください。profileは180秒、snapshotは開始60秒後です。
+通常回収では失敗RUNも保存し、分析DBを同期します。`after-bench`は成果物をローカルGit commitします。
+
+`task db-recreate`は3台それぞれの`isupipe`と`isudns`を破棄して公式schemaから作り直します。
+アプリ・PowerDNSの書込みを止め、schema再作成、DNS起動、アプリ起動、`POST /api/initialize`の順に処理します。
+通常の`task deploy-all`はDBを再作成しません。今回のsetupでは再作成のdry-runを確認し、実DBの再作成は実行していません。
 
 ## 必要なローカルツール
 
@@ -26,33 +37,8 @@ Linuxバイナリをローカルでクロスコンパイルして配布します
 
 ## 競技開始時
 
-最初に`Taskfile.yml`冒頭を当日の環境へ合わせます。
-
-```yaml
-vars:
-  SSH_USER: ubuntu
-  ISUCON_USER: isucon
-  APP_NAME: app-binary
-  APP_DIR: webapp/go
-  SERVICE: app-service
-  DB_NAME: app-database
-  TARGET_OS: linux
-  TARGET_ARCH: amd64
-  RESET_INPUTS: '' # Set 'none' only after confirming there are no additional files.
-  CONFIG_CHECK_COMMAND: '' # Set a contest-specific local validation command.
-  SETUP_SECRET_ALLOWLIST: ''
-  ALL_HOSTS: isucon-1 isucon-2 isucon-3
-  IP:
-    map:
-      isucon-1: 192.0.2.11
-      isucon-2: 192.0.2.12
-      isucon-3: 192.0.2.13
-  APP_HOSTS: isucon-1
-  APP_TRAFFIC_HOSTS: isucon-1
-  NGINX_HOSTS: isucon-1
-  MYSQL_HOST: isucon-1
-  MYSQL_HOSTS: '{{.MYSQL_HOST}}' # Deployment targets; expand only when needed.
-```
+構成の正本は`Taskfile.yml`です。ホスト・役割・内部IP・service・DB・TARGET_OS/ARCHは実機へ合わせて設定済みです。
+取得・生成・検査をやり直すときは以下を使います。
 
 `~/.ssh/config`に同じホストaliasを設定し、読み取りで実環境と公式資料を確認してから取得します。
 
@@ -65,13 +51,11 @@ task setup-check
 ```
 
 `setup-webapp`の取得対象は`SETUP_WEBAPP_EXCLUDES`で指定したrsync除外ファイルで調整できます。
-既定では従来どおり`node_modules/`だけを除外します。ビルド成果物の追加除外、schemaのsymlink、
+Goの生成binaryと他言語の取得済み生成物を除外しています。schemaのsymlink、
 実サーバーでの設定構文検査は[取得と構文検査の手引き](tools/setup/README.md)を参照してください。
 
-`MYSQL_HOSTS`はMySQL設定の配布・serviceの起動対象、`MYSQL_HOST`は詳細計測先と共通設定の取得元です。
-既定は同じ1台です。複数台のときは`MYSQL_HOSTS`を空白区切りで指定し、その中の1台を`MYSQL_HOST`にします。
-`db`と標準の`check-network`も`MYSQL_HOST`を使います。アプリのDB接続設定は変更しません。
-各アプリが別DBへ接続する構成では、その接続設定と疎通検査を実配置に合わせてください。
+`MYSQL_HOSTS`は3台すべてを含み、配布・起動・標準メトリクスの対象です。
+`MYSQL_HOST=isucon-1`は共通設定の取得元と対話DB接続の既定先です。各アプリのDB接続は各ホストのloopbackを使います。
 
 取得した`webapp/`、`nginx/`、`mysql/`、`etc/`は最初のbaselineとしてcommitします。
 当日マニュアルとAPI仕様は`docs/official/`へ保存してください。
@@ -85,12 +69,14 @@ credentialらしいファイルを検出し、build・test・成果物契約・d
 task deploy          # build + app配布 + restart
 task deploy-nginx    # 設定上書き・nginx -t成功後にreload
 task deploy-mysql    # MySQL設定配布 + restart
+task deploy-pdns     # PowerDNS設定配布 + restart
 task deploy-sysctl   # 全ホストへ配布 + sysctl -p
 task deploy-all      # 上記を依存順に反映。DB初期化はしない
 task db-recreate     # アプリを止め、DBを破棄・再作成して初期化
 task apply-roles     # 役割変更後だけenable/disableを収束
 task check-roles
 task check-network
+task check-pdns
 ```
 
 サーバーを変更せず実際の転送先・role・activationを確認する場合は、Go Task自身の`--dry`ではなく
@@ -102,17 +88,14 @@ task deploy-all-dry
 task db-recreate-dry
 ```
 
-`tools/deployctl/deployments.yaml`が転送とactivationの差分、`Taskfile.yml`が役割と値を持ちます。
+`tools/contest/deployments.yaml`が汎用graphをincludeし、競技固有の転送・activationを定義します。`Taskfile.yml`が役割と値を持ちます。
 新しいサービスが必要ならdeploymentを追加し、通常の変更に一時的な迂回Taskを増やさないでください。
 
 `db-recreate`は`setup-preflight`でローカルの役割・schema・追加資材とdry-runを確認してから、
-全APP_HOSTSのアプリ書込み元を停止し、MYSQL_HOST上の`DB_NAME`を再作成します。
-`SQL_DIR`（既定`webapp/sql`）の`SQL_SCHEMA_FILE`（既定`schema.sql`）を適用し、アプリを起動して
-先頭APP_HOSTSで一度だけ`POST /initialize`を実行します。途中で失敗したら後続へ進みません。
-seedや追加serviceが必要な競技では、公式手順に合わせて`tools/contest/deployments.yaml`に
-deploymentを定義します。`RESET_INPUTS`にはschema以外に初期化が読むローカルファイルをすべて列挙し、
-追加資材が無い場合は`none`にします。通常の`task deploy-all`はDBを再作成しません。
-`db-recreate`の前に対象DBの状態を確認してください。`db-recreate-dry`は実行順を表示します。
+全APP_HOSTSのGoと全MYSQL_HOSTSのPowerDNSを停止します。各ホストの`isupipe`と`isudns`を再作成し、
+`webapp/sql/initdb.d/10_schema.sql`と`webapp/sql/schema/pdns.sql`を適用します。
+PowerDNS、Goを順に起動して各ホストで`POST /api/initialize`を一度ずつ実行し、失敗時は後続へ進みません。
+`RESET_INPUTS`とSQL/DNSのuploadが初期化資材を管理します。`db-recreate-dry`で対象と順序を確認してください。
 
 `task config-check`はnginx/MySQLの正規配布先へ設定を書き込み、構文検査します。reloadは行いませんが、
 成功した設定は配布先に残ります。初期化時の`CONFIG_CHECK_COMMAND`へ設定する前に、検査コマンドと

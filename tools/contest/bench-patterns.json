@@ -1,6 +1,6 @@
 {
-  "_comment": "Contest-specific benchmark log format. Replace the expressions for each contest; the generic core and the emitted markers stay unchanged. score needs exactly one capture group; leave an entry empty when the benchmarker has no such line.",
-  "score": "score:\\s*(\\d+)\\s*$",
-  "pass": "^\\s*pass\\s*$",
-  "fail": "^\\s*fail\\s*$"
+  "_comment": "Observed ISUCON13 output and explicit portal markers. Missing results stay unknown.",
+  "score": "(?:スコア|SCORE|score):\\s*([0-9]+)\\s*$",
+  "pass": "(?:^BENCHMARK_PASS$|最終チェックが成功しました\\s*$)",
+  "fail": "(?:^BENCHMARK_FAIL(?:\\s|$)|(?:初期化|整合性チェック|最終チェック|ベンチマーク走行)が失敗しました)"
 }

@@ -1,73 +1,87 @@
-// Command smoke exercises a few requests against the application without
-// running the benchmark, so that `task setup-smoke` can check that the
-// collectors, logs, and profiles produce artifacts.
-//
-// Placeholder: task setup-smoke builds this for TARGET_OS/TARGET_ARCH, copies
-// the binary to ENTRY_HOST, and runs it there with no arguments. Replace the
-// flow below with the contest's own session flow (registration, login, and a
-// few authenticated reads) during setup. Keep it read-mostly, keep it short,
-// and never print session identifiers or credentials.
+// Command smoke verifies the authenticated API, access logs, and profiles.
+// It runs on ENTRY_HOST and contacts each existing independent nginx.
 package main
 
 import (
+	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/http/cookiejar"
+	"os"
 	"strings"
 	"time"
 )
 
 func main() {
-	base := flag.String("base", "http://127.0.0.1", "application base URL, reached from the host this runs on")
+	targets := flag.String("ingress", "127.0.0.1:443", "comma separated ingress addresses")
 	flag.Parse()
-
-	jar, err := cookiejar.New(nil)
+	roots, err := x509.SystemCertPool()
 	if err != nil {
 		log.Fatal(err)
 	}
-	// The jar keeps the session across steps once the flow logs in.
-	c := &client{http: &http.Client{Jar: jar, Timeout: 15 * time.Second}, base: strings.TrimSuffix(*base, "/")}
-
-	paths := []string{"/"}
-	for _, path := range paths {
-		if _, err := c.get(path); err != nil {
+	cert, err := os.ReadFile("/etc/nginx/tls/_.u.isucon.dev.crt")
+	if err != nil {
+		log.Fatal(err)
+	}
+	if !roots.AppendCertsFromPEM(cert) {
+		log.Fatal("cannot load the supplied public certificate")
+	}
+	// Use TLS verification and the official cookie domain while dialing the
+	// concrete ingress host. No credentials or session values are printed.
+	for _, addr := range strings.Split(*targets, ",") {
+		jar, err := cookiejar.New(nil)
+		if err != nil {
 			log.Fatal(err)
 		}
+		transport := &http.Transport{
+			TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS13, RootCAs: roots},
+			DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+				return (&net.Dialer{Timeout: 3 * time.Second}).DialContext(ctx, network, addr)
+			},
+		}
+		client := &http.Client{Transport: transport, Jar: jar, Timeout: 10 * time.Second}
+		if _, err := request(client, http.MethodPost, "/api/login", `{"username":"test001","password":"test"}`); err != nil {
+			log.Fatal(err)
+		}
+		for _, path := range []string{"/api/user/me", "/api/tag", "/api/user/test001", "/api/user/test001/theme", "/api/livestream/search?limit=1", "/api/livestream"} {
+			data, err := request(client, http.MethodGet, path, "")
+			if err != nil {
+				log.Fatal(err)
+			}
+			if !json.Valid(data) {
+				log.Fatalf("%s: invalid JSON", path)
+			}
+		}
+		transport.CloseIdleConnections()
+		fmt.Printf("%s: login and six authenticated reads passed\n", addr)
 	}
-	fmt.Printf("Smoke: %d unauthenticated read(s) passed; replace this flow with the contest's own\n", len(paths))
 }
 
-type client struct {
-	http *http.Client
-	base string
-}
-
-func (c *client) get(path string) ([]byte, error) {
-	return c.do(http.MethodGet, path, nil)
-}
-
-func (c *client) do(method, path string, body io.Reader) ([]byte, error) {
-	req, err := http.NewRequest(method, c.base+path, body)
+func request(client *http.Client, method, path, body string) ([]byte, error) {
+	req, err := http.NewRequest(method, "https://pipe.u.isucon.dev"+path, strings.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
-	if body != nil {
+	if body != "" {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	res, err := c.http.Do(req)
+	res, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("%s %s: %w", method, path, err)
 	}
 	defer res.Body.Close()
-	data, err := io.ReadAll(res.Body)
+	data, err := io.ReadAll(io.LimitReader(res.Body, 4<<20))
 	if err != nil {
-		return nil, fmt.Errorf("%s %s: %w", method, path, err)
+		return nil, err
 	}
 	if res.StatusCode != http.StatusOK {
-		// Response bodies can carry identifiers, so report the status only.
 		return nil, fmt.Errorf("%s %s: status %d", method, path, res.StatusCode)
 	}
 	return data, nil

@@ -17,23 +17,31 @@ vars:
   # 競技ごとに書き換える区画。template-diffはここをbackport候補として扱わない。
   # 区画の外は、次の競技でもそのまま使う既定値である。
   # setup-checkの前に、公式資料と実環境で全項目を確認する。
-  APP_NAME: app
-  SERVICE: app
-  DB_NAME: app
+  APP_NAME: isupipe
+  SERVICE: isupipe-go
+  DB_NAME: isupipe
   LISTEN_PORT: '8080'
   TARGET_OS: linux
   TARGET_ARCH: amd64
   # Example budget: initialization + checks + load + margin. Tune for the contest.
-  PROFILE_SECONDS: '120'
-  SNAPSHOT_PROFILE_DELAY: 40s
+  PROFILE_SECONDS: '180'
+  SNAPSHOT_PROFILE_DELAY: 60s
   # Additional local files read during DB recreation or initialization; use 'none' if empty.
-  RESET_INPUTS: ''
+  RESET_INPUTS: >-
+    webapp/sql/init.sh webapp/sql/init.sql
+    webapp/sql/initial_users.sql webapp/sql/initial_livestreams.sql
+    webapp/sql/initial_tags.sql webapp/sql/initial_livestream_tags.sql
+    webapp/sql/initial_reservation_slots.sql webapp/sql/initial_reactions.sql
+    webapp/sql/initial_ngwords.sql webapp/sql/initial_livecomments.sql
+    webapp/pdns/init_zone.sh webapp/pdns/u.isucon.dev.zone
+    webapp/sql/schema/pdns.sql
   # Adapt these reset assets and endpoint to the acquired official implementation.
   SQL_DIR: webapp/sql
-  SQL_SCHEMA_FILE: schema.sql
-  INITIALIZE_PATH: /initialize
-  CONFIG_CHECK_COMMAND: ''
+  SQL_SCHEMA_FILE: initdb.d/10_schema.sql
+  INITIALIZE_PATH: /api/initialize
+  CONFIG_CHECK_COMMAND: 'task config-check && task config-check-pdns'
   SETUP_SECRET_ALLOWLIST: ''
+  MANAGED_SERVICES: '{{.SERVICE}},nginx,mysql,pdns'
   # <<< contest values <<<
 
   SSH_USER: ubuntu
@@ -50,20 +58,21 @@ vars:
   # >>> contest values >>>
   # Contest topology. Keep host roles and private addresses here only.
   ALL_HOSTS: isucon-1 isucon-2 isucon-3
-  BENCH_HOST: isucon-bench
+  BENCH_HOST: ''
   IP:
     map:
-      isucon-1: 192.0.2.11
-      isucon-2: 192.0.2.12
-      isucon-3: 192.0.2.13
-  APP_HOSTS: isucon-1
-  APP_TRAFFIC_HOSTS: isucon-1
-  NGINX_HOSTS: isucon-1
+      isucon-1: 172.31.40.191
+      isucon-2: 172.31.37.38
+      isucon-3: 172.31.41.146
+  APP_HOSTS: isucon-1 isucon-2 isucon-3
+  APP_TRAFFIC_HOSTS: isucon-1 isucon-2 isucon-3
+  NGINX_HOSTS: isucon-1 isucon-2 isucon-3
   # MYSQL_HOST is the detailed measurement source and default DB connection.
   MYSQL_HOST: isucon-1
   # Deployment and service enable/disable targets; preserve the single-host default.
-  MYSQL_HOSTS: '{{.MYSQL_HOST}}'
+  MYSQL_HOSTS: isucon-1 isucon-2 isucon-3
   CONF_SRC: isucon-1
+  SMOKE_ARGS: '-ingress {{$ips := list}}{{range (splitList " " .NGINX_HOSTS)}}{{$ips = append $ips (printf "%s:443" (index $.IP .))}}{{end}}{{join "," $ips}}'
   # <<< contest values <<<
 
   ENTRY_HOST: '{{splitList " " .NGINX_HOSTS | first}}'
@@ -74,7 +83,7 @@ vars:
 
   # >>> contest values >>>
   BENCH_TARGET: http://{{.ENTRY_IP}}
-  BENCH_COMMAND: ./bench_linux_amd64 run --target {{.BENCH_TARGET}}
+  BENCH_COMMAND: ''
   BENCH_SSH_OPTIONS: ''
   # <<< contest values <<<
 
@@ -83,7 +92,9 @@ vars:
   RUN_STATE_FILE: '{{.RAW_DIR}}/current-run-id'
   ANALYSIS_DB: runs/analysis.duckdb
   ANALYSIS_CONFIG: tools/analysis/sources.yaml
-  DEPLOYCTL_CONFIG: tools/deployctl/deployments.yaml
+  # >>> contest values >>>
+  DEPLOYCTL_CONFIG: tools/contest/deployments.yaml
+  # <<< contest values <<<
 
   PROC_METRICS_DIR: tools/proc-metrics
   MYSQL_METRICS_DIR: tools/mysql-metrics
@@ -123,7 +134,7 @@ vars:
     -role mysql={{.MYSQL_HOST}}
     -role mysql_all={{splitList " " .MYSQL_HOSTS | join ","}}
   MEASURECTL_VARS: >-
-    -var services={{.SERVICE}},nginx,mysql
+    -var services={{.MANAGED_SERVICES}}
     -var app_service={{.SERVICE}}
     -var pprof_base_url={{.PPROF_BASE_URL}}
     -var sql_pool_metrics_url=http://127.0.0.1:6060/debug/sql-pools
@@ -192,6 +203,7 @@ tasks:
       - task: setup-mysql
       - task: setup-systemd
       - task: setup-sysctl
+      - task: setup-contest-assets
       - echo "取得完了。ベースラインを git commit してください"
 
   setup-webapp:
@@ -507,11 +519,12 @@ tasks:
         printf '%s\tBENCHMARK_START\n' "$started_at" > '{{.SMOKE_DIR}}/bench.log'
         {{.SSH}} {{.SSH_USER}}@{{.ENTRY_HOST}} 'mkdir -p {{.SMOKE_REMOTE_DIR}}'
         {{.RSYNC}} '{{.SMOKE_TOOL_DIR}}/smoke' {{.SSH_USER}}@{{.ENTRY_HOST}}:{{.SMOKE_REMOTE_DIR}}/smoke
-        {{.SSH}} {{.SSH_USER}}@{{.ENTRY_HOST}} '{{.SMOKE_REMOTE_DIR}}/smoke'
+        {{.SSH}} {{.SSH_USER}}@{{.ENTRY_HOST}} '{{.SMOKE_REMOTE_DIR}}/smoke {{.SMOKE_ARGS}}'
+        task setup-smoke-probes
         ended_at=$(task --silent bench-timestamp)
         printf '%s\tBENCHMARK_END\n' "$ended_at" >> '{{.SMOKE_DIR}}/bench.log'
         wait "$profiles_pid"
-        {{.MEASURECTL_DIR}}/measurectl digest -only alp,alp-by-ingress,upstream-breakdown,upstream-breakdown-by-ingress,user-transitions,pt-query-digest,slp,mysql-digest,app-journal,nginx-error,kernel-journal,oom-events -run-dir '{{.SMOKE_DIR}}' -raw-dir '{{.SMOKE_DIR}}/raw' {{.MEASURECTL_REMOTE}}
+        {{.MEASURECTL_DIR}}/measurectl digest -run-dir '{{.SMOKE_DIR}}' -raw-dir '{{.SMOKE_DIR}}/raw' {{.MEASURECTL_REMOTE}}
         echo 'Smoke artifacts: {{.SMOKE_DIR}} (not a benchmark RUN)'
 
   setup-smoke-stop:
@@ -565,7 +578,7 @@ tasks:
         vars: { PLAN: deploy-all }
 
   db-recreate:
-    desc: MYSQL_HOSTのDBをschemaから再作成しアプリを初期化
+    desc: 競技DBをschemaから再作成してアプリを初期化
     preconditions: *no_active_run
     deps: [setup-preflight]
     cmds:

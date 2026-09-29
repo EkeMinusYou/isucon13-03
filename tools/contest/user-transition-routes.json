@@ -1,11 +1,106 @@
 {
-  "_comment": "Placeholder. Set cookie_field to the access log column that identifies a session, api_prefix to the API root, and replace routes with the contest's own paths: dynamic IDs normalized, most specific pattern first.",
   "cookie_field": "session_id",
-  "api_prefix": "/",
+  "api_prefix": "/api/",
   "routes": [
     {
-      "name": "/initialize",
-      "pattern": "^/initialize$"
+      "name": "/api/livestream/:livestream_id/livecomment/:livecomment_id/report",
+      "pattern": "^/api/livestream/[^/]+/livecomment/[^/]+/report$"
+    },
+    {
+      "name": "/api/livestream/:livestream_id/enter",
+      "pattern": "^/api/livestream/[^/]+/enter$"
+    },
+    {
+      "name": "/api/livestream/:livestream_id/exit",
+      "pattern": "^/api/livestream/[^/]+/exit$"
+    },
+    {
+      "name": "/api/livestream/:livestream_id/livecomment",
+      "pattern": "^/api/livestream/[^/]+/livecomment$"
+    },
+    {
+      "name": "/api/livestream/:livestream_id/moderate",
+      "pattern": "^/api/livestream/[^/]+/moderate$"
+    },
+    {
+      "name": "/api/livestream/:livestream_id/ngwords",
+      "pattern": "^/api/livestream/[^/]+/ngwords$"
+    },
+    {
+      "name": "/api/livestream/:livestream_id/reaction",
+      "pattern": "^/api/livestream/[^/]+/reaction$"
+    },
+    {
+      "name": "/api/livestream/:livestream_id/report",
+      "pattern": "^/api/livestream/[^/]+/report$"
+    },
+    {
+      "name": "/api/livestream/:livestream_id/statistics",
+      "pattern": "^/api/livestream/[^/]+/statistics$"
+    },
+    {
+      "name": "/api/user/:username/icon",
+      "pattern": "^/api/user/[^/]+/icon$"
+    },
+    {
+      "name": "/api/user/:username/livestream",
+      "pattern": "^/api/user/[^/]+/livestream$"
+    },
+    {
+      "name": "/api/user/:username/statistics",
+      "pattern": "^/api/user/[^/]+/statistics$"
+    },
+    {
+      "name": "/api/user/:username/theme",
+      "pattern": "^/api/user/[^/]+/theme$"
+    },
+    {
+      "name": "/api/livestream/reservation",
+      "pattern": "^/api/livestream/reservation$"
+    },
+    {
+      "name": "/api/livestream/search",
+      "pattern": "^/api/livestream/search$"
+    },
+    {
+      "name": "/api/user/me",
+      "pattern": "^/api/user/me$"
+    },
+    {
+      "name": "/api/livestream/:livestream_id",
+      "pattern": "^/api/livestream/[^/]+$"
+    },
+    {
+      "name": "/api/user/:username",
+      "pattern": "^/api/user/[^/]+$"
+    },
+    {
+      "name": "/api/icon",
+      "pattern": "^/api/icon$"
+    },
+    {
+      "name": "/api/initialize",
+      "pattern": "^/api/initialize$"
+    },
+    {
+      "name": "/api/livestream",
+      "pattern": "^/api/livestream$"
+    },
+    {
+      "name": "/api/login",
+      "pattern": "^/api/login$"
+    },
+    {
+      "name": "/api/payment",
+      "pattern": "^/api/payment$"
+    },
+    {
+      "name": "/api/register",
+      "pattern": "^/api/register$"
+    },
+    {
+      "name": "/api/tag",
+      "pattern": "^/api/tag$"
     }
   ]
 }

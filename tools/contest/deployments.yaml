@@ -1,0 +1,115 @@
+# Each host retains an independent local application and DNS database.
+include: [../deployctl/deployments.yaml]
+
+deployments:
+  app:
+    uploads:
+      - {label: application, role: app, local: '{var:app_dir}/', remote: '{var:remote_home}/{var:app_dir}/', delete: true, excludes: ['*.pprof', default.pgo]}
+      - {label: systemd unit, role: app, local: 'etc/systemd/system/{var:service}.service', remote: '/etc/systemd/system/{var:service}.service'}
+      - &sql_assets {label: SQL and DNS schema assets, role: mysql, local: '{var:sql_dir}/', remote: '{var:remote_home}/{var:sql_dir}/', delete: true}
+      - &zone_assets {label: DNS initialization assets, role: mysql, local: webapp/pdns/, remote: '{var:remote_home}/webapp/pdns/', delete: true}
+    activations:
+      - label: restart application
+        role: app
+        script: |
+          set -eu
+          sudo chown -R {var:isucon_user}:{var:isucon_user} {var:remote_home}/{var:app_dir} {var:remote_home}/webapp/sql {var:remote_home}/webapp/pdns
+          sudo systemctl daemon-reload
+          sudo systemctl restart {var:service}
+          sudo systemctl is-active --quiet {var:service}
+
+  pdns-config:
+    uploads: &pdns_uploads
+      - label: host-specific PowerDNS configuration
+        role: mysql
+        local: 'etc/hosts/{host}/powerdns/'
+        remote: /etc/powerdns/
+        delete: true
+        validate: sudo pdns_server --config=check
+      - label: PowerDNS systemd drop-in
+        role: mysql
+        local: etc/systemd/system/pdns.service.d/
+        remote: /etc/systemd/system/pdns.service.d/
+
+  pdns:
+    uploads: *pdns_uploads
+    activations:
+      - label: restart PowerDNS
+        role: mysql
+        script: |
+          set -eu
+          sudo systemctl daemon-reload
+          sudo systemctl restart pdns
+          sudo systemctl is-active --quiet pdns
+
+  dns-stop:
+    activations:
+      - label: stop DNS database writers
+        role: mysql
+        script: |
+          set -eu
+          sudo systemctl stop pdns
+          test "$(sudo systemctl show pdns -p MainPID --value)" = 0
+          test "$(sudo systemctl show pdns -p ActiveState --value)" = inactive
+
+  db-schema:
+    uploads: [*sql_assets, *zone_assets]
+    activations:
+      - label: recreate both local competition databases
+        role: mysql
+        script: |
+          set -eu
+          sudo chown -R {var:isucon_user}:{var:isucon_user} {var:remote_home}/webapp/sql {var:remote_home}/webapp/pdns
+          sudo mysql -e 'DROP DATABASE IF EXISTS isupipe; CREATE DATABASE isupipe; DROP DATABASE IF EXISTS isudns; CREATE DATABASE isudns;'
+          sudo mysql isupipe < {var:remote_home}/{var:sql_dir}/{var:sql_schema_file}
+          sudo mysql isudns < {var:remote_home}/webapp/sql/schema/pdns.sql
+
+  dns-start:
+    activations:
+      - label: start DNS after schema recreation
+        role: mysql
+        script: |
+          set -eu
+          sudo systemctl start pdns
+          sudo systemctl is-active --quiet pdns
+
+  app-initialize:
+    activations:
+      - label: initialize each independent application and DNS database
+        role: app
+        script: |
+          set -eu
+          curl --fail-with-body --silent --show-error --max-time 42 -X POST 'http://127.0.0.1:{var:listen_port}{var:initialize_path}'
+
+  dns-roles:
+    activations:
+      - label: enable DNS services alongside their local databases
+        role: all
+        script: |
+          set -eu
+          case ',{var:mysql_hosts},' in
+            *',{host},'*) sudo systemctl enable --now pdns; sudo systemctl is-active --quiet pdns ;;
+            *) sudo systemctl disable --now pdns ;;
+          esac
+
+plans:
+  deploy-all:
+    deployments:
+      sysctl: {}
+      mysql: {}
+      pdns: {needs: [mysql]}
+      app: {needs: [pdns]}
+      nginx: {needs: [app]}
+  db-recreate:
+    deployments:
+      app-stop: {}
+      dns-stop: {needs: [app-stop]}
+      db-schema: {needs: [dns-stop]}
+      dns-start: {needs: [db-schema]}
+      app-start: {needs: [dns-start]}
+      app-initialize: {needs: [app-start]}
+  roles:
+    deployments:
+      roles-off: {}
+      roles-on: {needs: [roles-off]}
+      dns-roles: {needs: [roles-on]}

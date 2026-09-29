@@ -1,6 +1,11 @@
 # rsync patterns relative to the webapp acquisition root.
 # Keep the historical default; add only confirmed generated artifacts.
 node_modules/
+# contest: confirmed generated artifacts, not runtime assets of the Go app.
+/go/isupipe
+/rust/target/
+/perl/local/
+/php/vendor/
 
 # Examples: uncomment after checking the actual source/build layout.
 # /rust/target/

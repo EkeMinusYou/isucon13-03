@@ -10,6 +10,11 @@ raw/
 
 # Contest application build artifacts
 webapp/go/default.pgo
+# contest: generated binaries/dependencies in acquired reference implementations.
+webapp/go/isupipe
+webapp/rust/target/
+webapp/perl/local/
+webapp/php/vendor/
 
 # Tool build artifacts
 /tools/bench-output/bench-output

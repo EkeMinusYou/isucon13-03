@@ -5,4 +5,20 @@ limit: 65536
 matching_groups:
   # >>> contest values >>>
   # Normalize the contest's dynamic path segments here, most specific first.
+  - "^/api/livestream/[^/]+/livecomment/[^/]+/report$"
+  - "^/api/livestream/[^/]+/enter$"
+  - "^/api/livestream/[^/]+/exit$"
+  - "^/api/livestream/[^/]+/livecomment$"
+  - "^/api/livestream/[^/]+/moderate$"
+  - "^/api/livestream/[^/]+/ngwords$"
+  - "^/api/livestream/[^/]+/reaction$"
+  - "^/api/livestream/[^/]+/report$"
+  - "^/api/livestream/[^/]+/statistics$"
+  - "^/api/user/[^/]+/icon$"
+  - "^/api/user/[^/]+/livestream$"
+  - "^/api/user/[^/]+/statistics$"
+  - "^/api/user/[^/]+/theme$"
+  - "^/api/livestream/[^/]+$"
+  - "^/api/user/[^/]+$"
+
   # <<< contest values <<<

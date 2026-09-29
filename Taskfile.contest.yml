@@ -9,8 +9,93 @@
 version: '3'
 
 tasks:
+  setup-contest-assets:
+    desc: 競技固有の依存サービス資材を取得
+    cmds: [{task: setup-pdns}]
+
   prepare-db-assets:
     desc: deployへ載せる前にDB資材を生成・検証する（deploy系のhook、既定は何もしない）
 
   gen-contest-routing:
     desc: 解法固有のupstreamとホスト別生成物を追加する（genのhook、既定は何もしない）
+
+  setup-pdns:
+    desc: PowerDNSのホスト別設定・unit・公式schemaと環境を取得
+    cmds:
+      - for: { var: MYSQL_HOSTS }
+        cmd: |
+          mkdir -p etc/hosts/{{.ITEM}}/powerdns
+          {{.RSYNC}} {{.SSH_USER}}@{{.ITEM}}:/etc/powerdns/ etc/hosts/{{.ITEM}}/powerdns/
+          {{.RSYNC}} {{.SSH_USER}}@{{.ITEM}}:{{.REMOTE_HOME}}/env.sh etc/hosts/{{.ITEM}}/env.sh
+      - mkdir -p etc/systemd/system/pdns.service.d webapp/sql/schema etc/vendor-scripts
+      - '{{.RSYNC}} {{.SSH_USER}}@{{.CONF_SRC}}:/lib/systemd/system/pdns.service etc/vendor-units/'
+      - '{{.RSYNC}} {{.SSH_USER}}@{{.CONF_SRC}}:/etc/systemd/system/pdns.service.d/ etc/systemd/system/pdns.service.d/'
+      - '{{.RSYNC}} --copy-links {{.SSH_USER}}@{{.MYSQL_HOST}}:/usr/share/doc/pdns-backend-mysql/schema.mysql.sql webapp/sql/schema/pdns.sql'
+      - '{{.RSYNC}} {{.SSH_USER}}@{{.CONF_SRC}}:/opt/init_zone_once.sh etc/vendor-scripts/'
+
+  config-check-pdns:
+    desc: PowerDNSを正規配布先へ転送して構文検査（restartなし）
+    preconditions:
+      - sh: test ! -f '{{.RUN_STATE_FILE}}'
+        msg: active benchmark exists
+    deps: [build-deployctl]
+    cmds:
+      - '{{.DEPLOYCTL_DIR}}/deployctl apply pdns-config -config {{.DEPLOYCTL_CONFIG}} {{.DEPLOYCTL_COMMON}}'
+
+  deploy-pdns-dry:
+    desc: PowerDNSの転送先とrestartを実行せず表示
+    deps: [build-deployctl]
+    cmds:
+      - '{{.DEPLOYCTL_DIR}}/deployctl apply pdns -dry-run -config {{.DEPLOYCTL_CONFIG}} {{.DEPLOYCTL_COMMON}}'
+
+  deploy-pdns:
+    desc: 全MYSQL_HOSTSのPowerDNS設定を配布してrestart
+    preconditions:
+      - sh: test ! -f '{{.RUN_STATE_FILE}}'
+        msg: active benchmark exists
+    deps: [build-deployctl]
+    cmds:
+      - '{{.DEPLOYCTL_DIR}}/deployctl apply pdns -config {{.DEPLOYCTL_CONFIG}} {{.DEPLOYCTL_COMMON}}'
+
+  check-pdns:
+    desc: 全MYSQL_HOSTSのPowerDNS enable・active・DNS応答を確認
+    cmds:
+      - for: { var: MYSQL_HOSTS }
+        cmd: |
+          {{.SSH}} {{.SSH_USER}}@{{.ITEM}} '
+            set -eu
+            sudo systemctl is-enabled --quiet pdns
+            sudo systemctl is-active --quiet pdns
+            sudo pdns_control list >/dev/null
+            . /home/isucon/env.sh
+            answer=$(dig +time=2 +tries=1 +short pipe.u.isucon.dev @127.0.0.1)
+            test "$answer" = "$ISUCON13_POWERDNS_SUBDOMAIN_ADDRESS"
+            printf "DNS A record: %s\n" "$answer"
+          '
+
+  setup-smoke-probes:
+    desc: 閾値を超える短い読み取りSQLでslow logの生成を確認
+    preconditions:
+      - sh: test ! -f '{{.RUN_STATE_FILE}}'
+        msg: active benchmark exists
+    cmds:
+      - for: { var: MYSQL_HOSTS }
+        cmd: '{{.SSH}} {{.SSH_USER}}@{{.ITEM}} "sudo mysql -N -e ''SELECT SLEEP(0.02)''"'
+      # Let the one-second samplers emit points inside the smoke window.
+      - sleep 2
+
+  setup-readers-check:
+    desc: RUNを作らずsetup成果物のDuckDB取り込みとdashboard parserを確認
+    requires: { vars: [SMOKE_DIR] }
+    env:
+      ISUCON_SETUP_SMOKE: '{{.SMOKE_DIR}}'
+    cmds:
+      - cd tools/analysisctl && go test -run 'TestISUCON13' -v .
+      - cd tools/dashboard/server && go test -run 'TestISUCON13' -v .
+
+  setup-mysql-error-check:
+    desc: setup成果物と同じ時間窓のMySQL障害ログを回収
+    requires: { vars: [SMOKE_DIR] }
+    deps: [build-measurectl]
+    cmds:
+      - '{{.MEASURECTL_DIR}}/measurectl digest -only mysql-error -run-dir {{.SMOKE_DIR}} -raw-dir {{.SMOKE_DIR}}/raw {{.MEASURECTL_REMOTE}}'

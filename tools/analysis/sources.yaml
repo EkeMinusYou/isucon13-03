@@ -138,3 +138,13 @@ sources:
     schema: schema/bench-errors.sql
     match: bench.log
     view: bench_error_logs_raw
+
+  # contest: portal results supplement the entered score with original output.
+  - table: portal_result_logs
+    schema: ../contest/analysis-schema/portal-results.sql
+    match: benchmark-result.txt
+    view: portal_result_logs_raw
+  - table: runtime_logs
+    schema: schema/runtime-logs.sql
+    match: '*-*.log'
+    view: runtime_logs_raw
