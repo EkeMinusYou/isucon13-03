@@ -1,0 +1,1769 @@
+{
+  "run_id": "20260930-072026",
+  "result": [
+    {
+      "run_id": "20260930-072026",
+      "score": 3800,
+      "passed": true,
+      "addition": null,
+      "deduction": null,
+      "source_artifact": "bench.log"
+    }
+  ],
+  "load_window": [
+    {
+      "run_id": "20260930-072026",
+      "started_at": "2026-09-30 07:21:16.384+09",
+      "ended_at": "2026-09-30 07:22:16.385+09",
+      "duration_seconds": 60.001,
+      "source": "bench.log-load-phase",
+      "status": "ok",
+      "reason": ""
+    }
+  ],
+  "analysis_window": [
+    {
+      "run_id": "20260930-072026",
+      "started_at": "2026-09-30 07:21:16.384+09",
+      "ended_at": "2026-09-30 07:22:16.385+09",
+      "source": "bench.log-load-phase",
+      "status": "ok",
+      "reason": "",
+      "request_count": 3671,
+      "active_seconds": 61,
+      "start_threshold": 0,
+      "start_consecutive": 0,
+      "end_threshold": 0,
+      "end_consecutive": 0
+    }
+  ],
+  "artifact_status": [
+    {
+      "status": "empty",
+      "files": 2,
+      "bytes": 0
+    },
+    {
+      "status": "ok",
+      "files": 72,
+      "bytes": 8048713
+    }
+  ],
+  "artifact_exceptions": [
+    {
+      "name": "isucon-2-pt-query-digest.json",
+      "status": "empty",
+      "reason": "",
+      "quality_status": "invalid",
+      "quality_reason": ""
+    },
+    {
+      "name": "isucon-3-pt-query-digest.json",
+      "status": "empty",
+      "reason": "",
+      "quality_status": "invalid",
+      "quality_reason": ""
+    }
+  ],
+  "periodic_quality": [
+    {
+      "artifact_name": "isucon-1-disk-metrics.tsv",
+      "in_window_samples": 60,
+      "expected_samples": 60,
+      "window_coverage_pct": 100.0,
+      "max_gap_ms": 1001,
+      "monotonic": true,
+      "finite": true,
+      "quality_status": "valid",
+      "quality_source": "filtered-metrics+load_windows"
+    },
+    {
+      "artifact_name": "isucon-1-mysql-status.tsv",
+      "in_window_samples": 60,
+      "expected_samples": 60,
+      "window_coverage_pct": 100.0,
+      "max_gap_ms": 1007,
+      "monotonic": true,
+      "finite": true,
+      "quality_status": "valid",
+      "quality_source": "filtered-metrics+load_windows"
+    },
+    {
+      "artifact_name": "isucon-1-proc-metrics.tsv",
+      "in_window_samples": 60,
+      "expected_samples": 60,
+      "window_coverage_pct": 100.0,
+      "max_gap_ms": 1001,
+      "monotonic": true,
+      "finite": true,
+      "quality_status": "valid",
+      "quality_source": "filtered-metrics+load_windows"
+    },
+    {
+      "artifact_name": "isucon-1-service-metrics.tsv",
+      "in_window_samples": 60,
+      "expected_samples": 60,
+      "window_coverage_pct": 100.0,
+      "max_gap_ms": 1001,
+      "monotonic": true,
+      "finite": true,
+      "quality_status": "valid",
+      "quality_source": "filtered-metrics+load_windows"
+    },
+    {
+      "artifact_name": "isucon-1-sql-pool-metrics.tsv",
+      "in_window_samples": 60,
+      "expected_samples": 60,
+      "window_coverage_pct": 100.0,
+      "max_gap_ms": 1001,
+      "monotonic": true,
+      "finite": true,
+      "quality_status": "valid",
+      "quality_source": "filtered-metrics+load_windows"
+    },
+    {
+      "artifact_name": "isucon-2-disk-metrics.tsv",
+      "in_window_samples": 60,
+      "expected_samples": 60,
+      "window_coverage_pct": 100.0,
+      "max_gap_ms": 1001,
+      "monotonic": true,
+      "finite": true,
+      "quality_status": "valid",
+      "quality_source": "filtered-metrics+load_windows"
+    },
+    {
+      "artifact_name": "isucon-2-mysql-status.tsv",
+      "in_window_samples": 60,
+      "expected_samples": 60,
+      "window_coverage_pct": 100.0,
+      "max_gap_ms": 1001,
+      "monotonic": true,
+      "finite": true,
+      "quality_status": "valid",
+      "quality_source": "filtered-metrics+load_windows"
+    },
+    {
+      "artifact_name": "isucon-2-proc-metrics.tsv",
+      "in_window_samples": 60,
+      "expected_samples": 60,
+      "window_coverage_pct": 100.0,
+      "max_gap_ms": 1001,
+      "monotonic": true,
+      "finite": true,
+      "quality_status": "valid",
+      "quality_source": "filtered-metrics+load_windows"
+    },
+    {
+      "artifact_name": "isucon-2-service-metrics.tsv",
+      "in_window_samples": 60,
+      "expected_samples": 60,
+      "window_coverage_pct": 100.0,
+      "max_gap_ms": 1001,
+      "monotonic": true,
+      "finite": true,
+      "quality_status": "valid",
+      "quality_source": "filtered-metrics+load_windows"
+    },
+    {
+      "artifact_name": "isucon-2-sql-pool-metrics.tsv",
+      "in_window_samples": 60,
+      "expected_samples": 60,
+      "window_coverage_pct": 100.0,
+      "max_gap_ms": 1001,
+      "monotonic": true,
+      "finite": true,
+      "quality_status": "valid",
+      "quality_source": "filtered-metrics+load_windows"
+    },
+    {
+      "artifact_name": "isucon-3-disk-metrics.tsv",
+      "in_window_samples": 60,
+      "expected_samples": 60,
+      "window_coverage_pct": 100.0,
+      "max_gap_ms": 1001,
+      "monotonic": true,
+      "finite": true,
+      "quality_status": "valid",
+      "quality_source": "filtered-metrics+load_windows"
+    },
+    {
+      "artifact_name": "isucon-3-mysql-status.tsv",
+      "in_window_samples": 60,
+      "expected_samples": 60,
+      "window_coverage_pct": 100.0,
+      "max_gap_ms": 1001,
+      "monotonic": true,
+      "finite": true,
+      "quality_status": "valid",
+      "quality_source": "filtered-metrics+load_windows"
+    },
+    {
+      "artifact_name": "isucon-3-proc-metrics.tsv",
+      "in_window_samples": 60,
+      "expected_samples": 60,
+      "window_coverage_pct": 100.0,
+      "max_gap_ms": 1001,
+      "monotonic": true,
+      "finite": true,
+      "quality_status": "valid",
+      "quality_source": "filtered-metrics+load_windows"
+    },
+    {
+      "artifact_name": "isucon-3-service-metrics.tsv",
+      "in_window_samples": 60,
+      "expected_samples": 60,
+      "window_coverage_pct": 100.0,
+      "max_gap_ms": 1001,
+      "monotonic": true,
+      "finite": true,
+      "quality_status": "valid",
+      "quality_source": "filtered-metrics+load_windows"
+    },
+    {
+      "artifact_name": "isucon-3-sql-pool-metrics.tsv",
+      "in_window_samples": 60,
+      "expected_samples": 60,
+      "window_coverage_pct": 100.0,
+      "max_gap_ms": 1001,
+      "monotonic": true,
+      "finite": true,
+      "quality_status": "valid",
+      "quality_source": "filtered-metrics+load_windows"
+    }
+  ],
+  "metrics": [
+    {
+      "host": "isucon-1",
+      "source": "disk",
+      "points": 60,
+      "first_point": "2026-09-30 07:21:17.258998+09",
+      "last_point": "2026-09-30 07:22:16.258284+09",
+      "non_finite_values": 0
+    },
+    {
+      "host": "isucon-1",
+      "source": "mysql",
+      "points": 60,
+      "first_point": "2026-09-30 07:21:16.518523+09",
+      "last_point": "2026-09-30 07:22:15.518733+09",
+      "non_finite_values": 0
+    },
+    {
+      "host": "isucon-1",
+      "source": "proc",
+      "points": 60,
+      "first_point": "2026-09-30 07:21:17.258998+09",
+      "last_point": "2026-09-30 07:22:16.258284+09",
+      "non_finite_values": 0
+    },
+    {
+      "host": "isucon-1",
+      "source": "service",
+      "points": 60,
+      "first_point": "2026-09-30 07:21:17.258998+09",
+      "last_point": "2026-09-30 07:22:16.258284+09",
+      "non_finite_values": 0
+    },
+    {
+      "host": "isucon-1",
+      "source": "sql_pool",
+      "points": 60,
+      "first_point": "2026-09-30 07:21:16.576+09",
+      "last_point": "2026-09-30 07:22:15.572+09",
+      "non_finite_values": 0
+    },
+    {
+      "host": "isucon-2",
+      "source": "disk",
+      "points": 60,
+      "first_point": "2026-09-30 07:21:17.324623+09",
+      "last_point": "2026-09-30 07:22:16.325005+09",
+      "non_finite_values": 0
+    },
+    {
+      "host": "isucon-2",
+      "source": "mysql",
+      "points": 60,
+      "first_point": "2026-09-30 07:21:16.469269+09",
+      "last_point": "2026-09-30 07:22:15.469249+09",
+      "non_finite_values": 0
+    },
+    {
+      "host": "isucon-2",
+      "source": "proc",
+      "points": 60,
+      "first_point": "2026-09-30 07:21:17.324623+09",
+      "last_point": "2026-09-30 07:22:16.325005+09",
+      "non_finite_values": 0
+    },
+    {
+      "host": "isucon-2",
+      "source": "service",
+      "points": 60,
+      "first_point": "2026-09-30 07:21:17.324623+09",
+      "last_point": "2026-09-30 07:22:16.325005+09",
+      "non_finite_values": 0
+    },
+    {
+      "host": "isucon-2",
+      "source": "sql_pool",
+      "points": 60,
+      "first_point": "2026-09-30 07:21:16.572+09",
+      "last_point": "2026-09-30 07:22:15.572+09",
+      "non_finite_values": 0
+    },
+    {
+      "host": "isucon-3",
+      "source": "disk",
+      "points": 60,
+      "first_point": "2026-09-30 07:21:17.26814+09",
+      "last_point": "2026-09-30 07:22:16.268678+09",
+      "non_finite_values": 0
+    },
+    {
+      "host": "isucon-3",
+      "source": "mysql",
+      "points": 60,
+      "first_point": "2026-09-30 07:21:16.478179+09",
+      "last_point": "2026-09-30 07:22:15.478274+09",
+      "non_finite_values": 0
+    },
+    {
+      "host": "isucon-3",
+      "source": "proc",
+      "points": 60,
+      "first_point": "2026-09-30 07:21:17.26814+09",
+      "last_point": "2026-09-30 07:22:16.268678+09",
+      "non_finite_values": 0
+    },
+    {
+      "host": "isucon-3",
+      "source": "service",
+      "points": 60,
+      "first_point": "2026-09-30 07:21:17.26814+09",
+      "last_point": "2026-09-30 07:22:16.268678+09",
+      "non_finite_values": 0
+    },
+    {
+      "host": "isucon-3",
+      "source": "sql_pool",
+      "points": 60,
+      "first_point": "2026-09-30 07:21:16.586+09",
+      "last_point": "2026-09-30 07:22:15.586+09",
+      "non_finite_values": 0
+    }
+  ],
+  "service_availability": [
+    {
+      "host": "isucon-1",
+      "entity": "isupipe-go.service",
+      "points": 60,
+      "min_available": 1.0,
+      "max_available": 1.0
+    },
+    {
+      "host": "isucon-1",
+      "entity": "mysql.service",
+      "points": 60,
+      "min_available": 1.0,
+      "max_available": 1.0
+    },
+    {
+      "host": "isucon-1",
+      "entity": "nginx.service",
+      "points": 60,
+      "min_available": 1.0,
+      "max_available": 1.0
+    },
+    {
+      "host": "isucon-1",
+      "entity": "pdns.service",
+      "points": 60,
+      "min_available": 1.0,
+      "max_available": 1.0
+    },
+    {
+      "host": "isucon-2",
+      "entity": "isupipe-go.service",
+      "points": 60,
+      "min_available": 1.0,
+      "max_available": 1.0
+    },
+    {
+      "host": "isucon-2",
+      "entity": "mysql.service",
+      "points": 60,
+      "min_available": 1.0,
+      "max_available": 1.0
+    },
+    {
+      "host": "isucon-2",
+      "entity": "nginx.service",
+      "points": 60,
+      "min_available": 1.0,
+      "max_available": 1.0
+    },
+    {
+      "host": "isucon-2",
+      "entity": "pdns.service",
+      "points": 60,
+      "min_available": 1.0,
+      "max_available": 1.0
+    },
+    {
+      "host": "isucon-3",
+      "entity": "isupipe-go.service",
+      "points": 60,
+      "min_available": 1.0,
+      "max_available": 1.0
+    },
+    {
+      "host": "isucon-3",
+      "entity": "mysql.service",
+      "points": 60,
+      "min_available": 1.0,
+      "max_available": 1.0
+    },
+    {
+      "host": "isucon-3",
+      "entity": "nginx.service",
+      "points": 60,
+      "min_available": 1.0,
+      "max_available": 1.0
+    },
+    {
+      "host": "isucon-3",
+      "entity": "pdns.service",
+      "points": 60,
+      "min_available": 1.0,
+      "max_available": 1.0
+    }
+  ],
+  "locks": [
+    {
+      "host": "isucon-1",
+      "samples": 1200,
+      "first_sample": "2026-09-30 07:21:16.403314+09",
+      "last_sample": "2026-09-30 07:22:16.35379+09",
+      "capture_errors": 0,
+      "wait_samples": 3,
+      "max_gap_ms": 51.327
+    },
+    {
+      "host": "isucon-2",
+      "samples": 1200,
+      "first_sample": "2026-09-30 07:21:16.415702+09",
+      "last_sample": "2026-09-30 07:22:16.36477+09",
+      "capture_errors": 0,
+      "wait_samples": 0,
+      "max_gap_ms": 50.705
+    },
+    {
+      "host": "isucon-3",
+      "samples": 1200,
+      "first_sample": "2026-09-30 07:21:16.410695+09",
+      "last_sample": "2026-09-30 07:22:16.361584+09",
+      "capture_errors": 0,
+      "wait_samples": 0,
+      "max_gap_ms": 50.79
+    }
+  ],
+  "lock_errors": null,
+  "sql_summary": [
+    {
+      "host": "isucon-1",
+      "source": "digest",
+      "query_shapes": 104,
+      "statements": 158937,
+      "statement_seconds": 522.676132
+    },
+    {
+      "host": "isucon-1",
+      "source": "slp",
+      "query_shapes": 63,
+      "statements": 12904,
+      "statement_seconds": 374.2502220000001
+    },
+    {
+      "host": "isucon-2",
+      "source": "digest",
+      "query_shapes": 7,
+      "statements": 4019,
+      "statement_seconds": 1.1484560000000001
+    },
+    {
+      "host": "isucon-3",
+      "source": "digest",
+      "query_shapes": 7,
+      "statements": 4019,
+      "statement_seconds": 1.329533
+    }
+  ],
+  "digest_selects": [
+    {
+      "host": "isucon-1",
+      "select_statements": 106401,
+      "parameterized_select_statements": 102347,
+      "livestream_tags_select_statements": 6214,
+      "statement_errors": 0
+    },
+    {
+      "host": "isucon-2",
+      "select_statements": 3815,
+      "parameterized_select_statements": null,
+      "livestream_tags_select_statements": null,
+      "statement_errors": 0
+    },
+    {
+      "host": "isucon-3",
+      "select_statements": 3815,
+      "parameterized_select_statements": null,
+      "livestream_tags_select_statements": null,
+      "statement_errors": 0
+    }
+  ],
+  "livestream_tags_queries": [
+    {
+      "host": "isucon-1",
+      "source": "digest",
+      "calls": 6200,
+      "statement_seconds": 185.461034,
+      "max_time_sec": 0.105031,
+      "sum_lock_sec": 0.020929,
+      "errors": 0
+    },
+    {
+      "host": "isucon-1",
+      "source": "digest",
+      "calls": 14,
+      "statement_seconds": 0.179838,
+      "max_time_sec": 0.055209,
+      "sum_lock_sec": 1.2e-05,
+      "errors": 0
+    },
+    {
+      "host": "isucon-1",
+      "source": "slp",
+      "calls": 4736,
+      "statement_seconds": 170.461491,
+      "max_time_sec": 0.10501,
+      "sum_lock_sec": 0.019811,
+      "errors": null
+    },
+    {
+      "host": "isucon-1",
+      "source": "slp",
+      "calls": 5,
+      "statement_seconds": 0.15891,
+      "max_time_sec": 0.055172,
+      "sum_lock_sec": 4e-06,
+      "errors": null
+    }
+  ],
+  "warnings_raw": [
+    {
+      "raw_warning_lines": 60,
+      "canceled_warning_lines": 58,
+      "during_load": 2,
+      "after_load": 58
+    }
+  ],
+  "warnings_parsed": [
+    {
+      "parsed_events": 60,
+      "distinct_timestamps": 7
+    }
+  ],
+  "scenarios": [
+    {
+      "scenario": "aggressive-streamer-moderate",
+      "successes": 35,
+      "failures": 1
+    },
+    {
+      "scenario": "dns-watertorture-attack",
+      "successes": 16,
+      "failures": 0
+    },
+    {
+      "scenario": "streamer-cold-reserve",
+      "successes": 65,
+      "failures": 0
+    },
+    {
+      "scenario": "streamer-moderate",
+      "successes": 25,
+      "failures": 0
+    },
+    {
+      "scenario": "viewer",
+      "successes": 15,
+      "failures": 0
+    },
+    {
+      "scenario": "viewer-report",
+      "successes": 37,
+      "failures": 8
+    },
+    {
+      "scenario": "viewer-spam",
+      "successes": 37,
+      "failures": 1
+    }
+  ],
+  "profiles": [
+    {
+      "host": "isucon-1",
+      "source": "isucon-1-fgprof.pprof",
+      "profile_type": "fgprof",
+      "sample_type": "samples",
+      "sample_unit": "count",
+      "value_unit": "count",
+      "duration_seconds": 180.000660235,
+      "total_value": 489592.0,
+      "sample_count": 996,
+      "incomplete_samples": 0,
+      "captured_at": "2026-09-30 07:20:28.745313+09"
+    },
+    {
+      "host": "isucon-1",
+      "source": "isucon-1-fgprof.pprof",
+      "profile_type": "fgprof",
+      "sample_type": "time",
+      "sample_unit": "nanoseconds",
+      "value_unit": "seconds",
+      "duration_seconds": 180.000660235,
+      "total_value": 4945.373687920053,
+      "sample_count": 996,
+      "incomplete_samples": 0,
+      "captured_at": "2026-09-30 07:20:28.745313+09"
+    },
+    {
+      "host": "isucon-1",
+      "source": "isucon-1-go-allocs.pprof",
+      "profile_type": "go-allocs",
+      "sample_type": "alloc_objects",
+      "sample_unit": "count",
+      "value_unit": "count",
+      "duration_seconds": 0.0,
+      "total_value": 1936913.0,
+      "sample_count": 296,
+      "incomplete_samples": 0,
+      "captured_at": "2026-09-30 07:21:28.793442+09"
+    },
+    {
+      "host": "isucon-1",
+      "source": "isucon-1-go-allocs.pprof",
+      "profile_type": "go-allocs",
+      "sample_type": "alloc_space",
+      "sample_unit": "bytes",
+      "value_unit": "bytes",
+      "duration_seconds": 0.0,
+      "total_value": 333613155.0,
+      "sample_count": 296,
+      "incomplete_samples": 0,
+      "captured_at": "2026-09-30 07:21:28.793442+09"
+    },
+    {
+      "host": "isucon-1",
+      "source": "isucon-1-go-allocs.pprof",
+      "profile_type": "go-allocs",
+      "sample_type": "inuse_objects",
+      "sample_unit": "count",
+      "value_unit": "count",
+      "duration_seconds": 0.0,
+      "total_value": 21709.0,
+      "sample_count": 12,
+      "incomplete_samples": 0,
+      "captured_at": "2026-09-30 07:21:28.793442+09"
+    },
+    {
+      "host": "isucon-1",
+      "source": "isucon-1-go-allocs.pprof",
+      "profile_type": "go-allocs",
+      "sample_type": "inuse_space",
+      "sample_unit": "bytes",
+      "value_unit": "bytes",
+      "duration_seconds": 0.0,
+      "total_value": 8488261.0,
+      "sample_count": 12,
+      "incomplete_samples": 0,
+      "captured_at": "2026-09-30 07:21:28.793442+09"
+    },
+    {
+      "host": "isucon-1",
+      "source": "isucon-1-go-cpu.pprof",
+      "profile_type": "go-cpu",
+      "sample_type": "cpu",
+      "sample_unit": "nanoseconds",
+      "value_unit": "seconds",
+      "duration_seconds": 180.002510583,
+      "total_value": 17.379999999999963,
+      "sample_count": 1286,
+      "incomplete_samples": 0,
+      "captured_at": "2026-09-30 07:20:28.747883+09"
+    },
+    {
+      "host": "isucon-1",
+      "source": "isucon-1-go-cpu.pprof",
+      "profile_type": "go-cpu",
+      "sample_type": "samples",
+      "sample_unit": "count",
+      "value_unit": "count",
+      "duration_seconds": 180.002510583,
+      "total_value": 1738.0,
+      "sample_count": 1286,
+      "incomplete_samples": 0,
+      "captured_at": "2026-09-30 07:20:28.747883+09"
+    },
+    {
+      "host": "isucon-1",
+      "source": "isucon-1-go-goroutine.pprof",
+      "profile_type": "go-goroutine",
+      "sample_type": "goroutine",
+      "sample_unit": "count",
+      "value_unit": "count",
+      "duration_seconds": 0.0,
+      "total_value": 65.0,
+      "sample_count": 26,
+      "incomplete_samples": 1,
+      "captured_at": "2026-09-30 07:21:28.78982+09"
+    },
+    {
+      "host": "isucon-1",
+      "source": "isucon-1-go-heap.pprof",
+      "profile_type": "go-heap",
+      "sample_type": "alloc_objects",
+      "sample_unit": "count",
+      "value_unit": "count",
+      "duration_seconds": 0.0,
+      "total_value": 1936913.0,
+      "sample_count": 296,
+      "incomplete_samples": 0,
+      "captured_at": "2026-09-30 07:21:28.790861+09"
+    },
+    {
+      "host": "isucon-1",
+      "source": "isucon-1-go-heap.pprof",
+      "profile_type": "go-heap",
+      "sample_type": "alloc_space",
+      "sample_unit": "bytes",
+      "value_unit": "bytes",
+      "duration_seconds": 0.0,
+      "total_value": 333613155.0,
+      "sample_count": 296,
+      "incomplete_samples": 0,
+      "captured_at": "2026-09-30 07:21:28.790861+09"
+    },
+    {
+      "host": "isucon-1",
+      "source": "isucon-1-go-heap.pprof",
+      "profile_type": "go-heap",
+      "sample_type": "inuse_objects",
+      "sample_unit": "count",
+      "value_unit": "count",
+      "duration_seconds": 0.0,
+      "total_value": 21709.0,
+      "sample_count": 12,
+      "incomplete_samples": 0,
+      "captured_at": "2026-09-30 07:21:28.790861+09"
+    },
+    {
+      "host": "isucon-1",
+      "source": "isucon-1-go-heap.pprof",
+      "profile_type": "go-heap",
+      "sample_type": "inuse_space",
+      "sample_unit": "bytes",
+      "value_unit": "bytes",
+      "duration_seconds": 0.0,
+      "total_value": 8488261.0,
+      "sample_count": 12,
+      "incomplete_samples": 0,
+      "captured_at": "2026-09-30 07:21:28.790861+09"
+    },
+    {
+      "host": "isucon-2",
+      "source": "isucon-2-fgprof.pprof",
+      "profile_type": "fgprof",
+      "sample_type": "samples",
+      "sample_unit": "count",
+      "value_unit": "count",
+      "duration_seconds": 180.000075736,
+      "total_value": 178202.0,
+      "sample_count": 10,
+      "incomplete_samples": 0,
+      "captured_at": "2026-09-30 07:20:28.749852+09"
+    },
+    {
+      "host": "isucon-2",
+      "source": "isucon-2-fgprof.pprof",
+      "profile_type": "fgprof",
+      "sample_type": "time",
+      "sample_unit": "nanoseconds",
+      "value_unit": "seconds",
+      "duration_seconds": 180.000075736,
+      "total_value": 1800.0201840199995,
+      "sample_count": 10,
+      "incomplete_samples": 0,
+      "captured_at": "2026-09-30 07:20:28.749852+09"
+    },
+    {
+      "host": "isucon-2",
+      "source": "isucon-2-go-allocs.pprof",
+      "profile_type": "go-allocs",
+      "sample_type": "alloc_objects",
+      "sample_unit": "count",
+      "value_unit": "count",
+      "duration_seconds": 0.0,
+      "total_value": 130819.0,
+      "sample_count": 28,
+      "incomplete_samples": 0,
+      "captured_at": "2026-09-30 07:21:28.763364+09"
+    },
+    {
+      "host": "isucon-2",
+      "source": "isucon-2-go-allocs.pprof",
+      "profile_type": "go-allocs",
+      "sample_type": "alloc_space",
+      "sample_unit": "bytes",
+      "value_unit": "bytes",
+      "duration_seconds": 0.0,
+      "total_value": 28315580.0,
+      "sample_count": 28,
+      "incomplete_samples": 0,
+      "captured_at": "2026-09-30 07:21:28.763364+09"
+    },
+    {
+      "host": "isucon-2",
+      "source": "isucon-2-go-allocs.pprof",
+      "profile_type": "go-allocs",
+      "sample_type": "inuse_objects",
+      "sample_unit": "count",
+      "value_unit": "count",
+      "duration_seconds": 0.0,
+      "total_value": 5431.0,
+      "sample_count": 4,
+      "incomplete_samples": 0,
+      "captured_at": "2026-09-30 07:21:28.763364+09"
+    },
+    {
+      "host": "isucon-2",
+      "source": "isucon-2-go-allocs.pprof",
+      "profile_type": "go-allocs",
+      "sample_type": "inuse_space",
+      "sample_unit": "bytes",
+      "value_unit": "bytes",
+      "duration_seconds": 0.0,
+      "total_value": 2854231.0,
+      "sample_count": 4,
+      "incomplete_samples": 0,
+      "captured_at": "2026-09-30 07:21:28.763364+09"
+    },
+    {
+      "host": "isucon-2",
+      "source": "isucon-2-go-cpu.pprof",
+      "profile_type": "go-cpu",
+      "sample_type": "cpu",
+      "sample_unit": "nanoseconds",
+      "value_unit": "seconds",
+      "duration_seconds": 180.000421541,
+      "total_value": 1.3900000000000006,
+      "sample_count": 83,
+      "incomplete_samples": 0,
+      "captured_at": "2026-09-30 07:20:28.753745+09"
+    },
+    {
+      "host": "isucon-2",
+      "source": "isucon-2-go-cpu.pprof",
+      "profile_type": "go-cpu",
+      "sample_type": "samples",
+      "sample_unit": "count",
+      "value_unit": "count",
+      "duration_seconds": 180.000421541,
+      "total_value": 139.0,
+      "sample_count": 83,
+      "incomplete_samples": 0,
+      "captured_at": "2026-09-30 07:20:28.753745+09"
+    },
+    {
+      "host": "isucon-2",
+      "source": "isucon-2-go-goroutine.pprof",
+      "profile_type": "go-goroutine",
+      "sample_type": "goroutine",
+      "sample_unit": "count",
+      "value_unit": "count",
+      "duration_seconds": 0.0,
+      "total_value": 13.0,
+      "sample_count": 12,
+      "incomplete_samples": 1,
+      "captured_at": "2026-09-30 07:21:28.769819+09"
+    },
+    {
+      "host": "isucon-2",
+      "source": "isucon-2-go-heap.pprof",
+      "profile_type": "go-heap",
+      "sample_type": "alloc_objects",
+      "sample_unit": "count",
+      "value_unit": "count",
+      "duration_seconds": 0.0,
+      "total_value": 131844.0,
+      "sample_count": 28,
+      "incomplete_samples": 0,
+      "captured_at": "2026-09-30 07:21:28.770745+09"
+    },
+    {
+      "host": "isucon-2",
+      "source": "isucon-2-go-heap.pprof",
+      "profile_type": "go-heap",
+      "sample_type": "alloc_space",
+      "sample_unit": "bytes",
+      "value_unit": "bytes",
+      "duration_seconds": 0.0,
+      "total_value": 29365181.0,
+      "sample_count": 28,
+      "incomplete_samples": 0,
+      "captured_at": "2026-09-30 07:21:28.770745+09"
+    },
+    {
+      "host": "isucon-2",
+      "source": "isucon-2-go-heap.pprof",
+      "profile_type": "go-heap",
+      "sample_type": "inuse_objects",
+      "sample_unit": "count",
+      "value_unit": "count",
+      "duration_seconds": 0.0,
+      "total_value": 5431.0,
+      "sample_count": 4,
+      "incomplete_samples": 0,
+      "captured_at": "2026-09-30 07:21:28.770745+09"
+    },
+    {
+      "host": "isucon-2",
+      "source": "isucon-2-go-heap.pprof",
+      "profile_type": "go-heap",
+      "sample_type": "inuse_space",
+      "sample_unit": "bytes",
+      "value_unit": "bytes",
+      "duration_seconds": 0.0,
+      "total_value": 2854231.0,
+      "sample_count": 4,
+      "incomplete_samples": 0,
+      "captured_at": "2026-09-30 07:21:28.770745+09"
+    },
+    {
+      "host": "isucon-3",
+      "source": "isucon-3-fgprof.pprof",
+      "profile_type": "fgprof",
+      "sample_type": "samples",
+      "sample_unit": "count",
+      "value_unit": "count",
+      "duration_seconds": 180.000280478,
+      "total_value": 178197.0,
+      "sample_count": 10,
+      "incomplete_samples": 0,
+      "captured_at": "2026-09-30 07:20:28.74913+09"
+    },
+    {
+      "host": "isucon-3",
+      "source": "isucon-3-fgprof.pprof",
+      "profile_type": "fgprof",
+      "sample_type": "time",
+      "sample_unit": "nanoseconds",
+      "value_unit": "seconds",
+      "duration_seconds": 180.000280478,
+      "total_value": 1799.9696789699997,
+      "sample_count": 10,
+      "incomplete_samples": 0,
+      "captured_at": "2026-09-30 07:20:28.74913+09"
+    },
+    {
+      "host": "isucon-3",
+      "source": "isucon-3-go-allocs.pprof",
+      "profile_type": "go-allocs",
+      "sample_type": "alloc_objects",
+      "sample_unit": "count",
+      "value_unit": "count",
+      "duration_seconds": 0.0,
+      "total_value": 193615.0,
+      "sample_count": 20,
+      "incomplete_samples": 0,
+      "captured_at": "2026-09-30 07:21:28.764118+09"
+    },
+    {
+      "host": "isucon-3",
+      "source": "isucon-3-go-allocs.pprof",
+      "profile_type": "go-allocs",
+      "sample_type": "alloc_space",
+      "sample_unit": "bytes",
+      "value_unit": "bytes",
+      "duration_seconds": 0.0,
+      "total_value": 24884890.0,
+      "sample_count": 20,
+      "incomplete_samples": 0,
+      "captured_at": "2026-09-30 07:21:28.764118+09"
+    },
+    {
+      "host": "isucon-3",
+      "source": "isucon-3-go-allocs.pprof",
+      "profile_type": "go-allocs",
+      "sample_type": "inuse_objects",
+      "sample_unit": "count",
+      "value_unit": "count",
+      "duration_seconds": 0.0,
+      "total_value": 4682.0,
+      "sample_count": 2,
+      "incomplete_samples": 0,
+      "captured_at": "2026-09-30 07:21:28.764118+09"
+    },
+    {
+      "host": "isucon-3",
+      "source": "isucon-3-go-allocs.pprof",
+      "profile_type": "go-allocs",
+      "sample_type": "inuse_space",
+      "sample_unit": "bytes",
+      "value_unit": "bytes",
+      "duration_seconds": 0.0,
+      "total_value": 1737040.0,
+      "sample_count": 2,
+      "incomplete_samples": 0,
+      "captured_at": "2026-09-30 07:21:28.764118+09"
+    },
+    {
+      "host": "isucon-3",
+      "source": "isucon-3-go-cpu.pprof",
+      "profile_type": "go-cpu",
+      "sample_type": "cpu",
+      "sample_unit": "nanoseconds",
+      "value_unit": "seconds",
+      "duration_seconds": 180.000991159,
+      "total_value": 1.470000000000001,
+      "sample_count": 112,
+      "incomplete_samples": 0,
+      "captured_at": "2026-09-30 07:20:28.743276+09"
+    },
+    {
+      "host": "isucon-3",
+      "source": "isucon-3-go-cpu.pprof",
+      "profile_type": "go-cpu",
+      "sample_type": "samples",
+      "sample_unit": "count",
+      "value_unit": "count",
+      "duration_seconds": 180.000991159,
+      "total_value": 147.0,
+      "sample_count": 112,
+      "incomplete_samples": 0,
+      "captured_at": "2026-09-30 07:20:28.743276+09"
+    },
+    {
+      "host": "isucon-3",
+      "source": "isucon-3-go-goroutine.pprof",
+      "profile_type": "go-goroutine",
+      "sample_type": "goroutine",
+      "sample_unit": "count",
+      "value_unit": "count",
+      "duration_seconds": 0.0,
+      "total_value": 13.0,
+      "sample_count": 11,
+      "incomplete_samples": 0,
+      "captured_at": "2026-09-30 07:21:28.772099+09"
+    },
+    {
+      "host": "isucon-3",
+      "source": "isucon-3-go-heap.pprof",
+      "profile_type": "go-heap",
+      "sample_type": "alloc_objects",
+      "sample_unit": "count",
+      "value_unit": "count",
+      "duration_seconds": 0.0,
+      "total_value": 193615.0,
+      "sample_count": 20,
+      "incomplete_samples": 0,
+      "captured_at": "2026-09-30 07:21:28.769633+09"
+    },
+    {
+      "host": "isucon-3",
+      "source": "isucon-3-go-heap.pprof",
+      "profile_type": "go-heap",
+      "sample_type": "alloc_space",
+      "sample_unit": "bytes",
+      "value_unit": "bytes",
+      "duration_seconds": 0.0,
+      "total_value": 24884890.0,
+      "sample_count": 20,
+      "incomplete_samples": 0,
+      "captured_at": "2026-09-30 07:21:28.769633+09"
+    },
+    {
+      "host": "isucon-3",
+      "source": "isucon-3-go-heap.pprof",
+      "profile_type": "go-heap",
+      "sample_type": "inuse_objects",
+      "sample_unit": "count",
+      "value_unit": "count",
+      "duration_seconds": 0.0,
+      "total_value": 4682.0,
+      "sample_count": 2,
+      "incomplete_samples": 0,
+      "captured_at": "2026-09-30 07:21:28.769633+09"
+    },
+    {
+      "host": "isucon-3",
+      "source": "isucon-3-go-heap.pprof",
+      "profile_type": "go-heap",
+      "sample_type": "inuse_space",
+      "sample_unit": "bytes",
+      "value_unit": "bytes",
+      "duration_seconds": 0.0,
+      "total_value": 1737040.0,
+      "sample_count": 2,
+      "incomplete_samples": 0,
+      "captured_at": "2026-09-30 07:21:28.769633+09"
+    }
+  ],
+  "access_by_ingress": [
+    {
+      "ingress_host": "isucon-1",
+      "requests": 3857,
+      "status_2xx": 3823,
+      "status_4xx": 32,
+      "status_5xx": 2
+    }
+  ],
+  "transitions": [
+    {
+      "total_api_requests": 3855,
+      "total_classified_requests": 3855,
+      "total_requests_with_identity": 3622,
+      "total_sessions": 212,
+      "total_transitions": 3410,
+      "total_overlapping_transitions": 3,
+      "total_ambiguous_order_transitions": 0,
+      "total_scenario_groups": 31,
+      "scenarios_emitted": 31,
+      "scenario_sessions_omitted": 0,
+      "unmatched_api_requests": 0,
+      "missing_identity_requests": 233,
+      "malformed_lines": 0,
+      "invalid_time_lines": 0
+    }
+  ],
+  "runtime_log_sources": [
+    {
+      "host": "isucon-1",
+      "source_artifact": "isucon-1-app-journal.log"
+    },
+    {
+      "host": "isucon-1",
+      "source_artifact": "isucon-1-kernel.log"
+    },
+    {
+      "host": "isucon-1",
+      "source_artifact": "isucon-1-mysql-error.log"
+    },
+    {
+      "host": "isucon-1",
+      "source_artifact": "isucon-1-nginx-error.log"
+    },
+    {
+      "host": "isucon-1",
+      "source_artifact": "isucon-1-oom.log"
+    },
+    {
+      "host": "isucon-1",
+      "source_artifact": "isucon-1-service-journal.log"
+    },
+    {
+      "host": "isucon-2",
+      "source_artifact": "isucon-2-app-journal.log"
+    },
+    {
+      "host": "isucon-2",
+      "source_artifact": "isucon-2-kernel.log"
+    },
+    {
+      "host": "isucon-2",
+      "source_artifact": "isucon-2-mysql-error.log"
+    },
+    {
+      "host": "isucon-2",
+      "source_artifact": "isucon-2-nginx-error.log"
+    },
+    {
+      "host": "isucon-2",
+      "source_artifact": "isucon-2-oom.log"
+    },
+    {
+      "host": "isucon-2",
+      "source_artifact": "isucon-2-service-journal.log"
+    },
+    {
+      "host": "isucon-3",
+      "source_artifact": "isucon-3-app-journal.log"
+    },
+    {
+      "host": "isucon-3",
+      "source_artifact": "isucon-3-kernel.log"
+    },
+    {
+      "host": "isucon-3",
+      "source_artifact": "isucon-3-mysql-error.log"
+    },
+    {
+      "host": "isucon-3",
+      "source_artifact": "isucon-3-nginx-error.log"
+    },
+    {
+      "host": "isucon-3",
+      "source_artifact": "isucon-3-oom.log"
+    },
+    {
+      "host": "isucon-3",
+      "source_artifact": "isucon-3-service-journal.log"
+    }
+  ],
+  "additional_checks": {
+    "raw_access": [
+      {
+        "host": "isucon-1",
+        "requests": 3857,
+        "during_load": 3671,
+        "http_5xx": 2
+      }
+    ],
+    "missing_identity": [
+      {
+        "method": "POST",
+        "uri": "/api/register",
+        "status": 201,
+        "requests": 206
+      },
+      {
+        "method": "POST",
+        "uri": "/api/login",
+        "status": 401,
+        "requests": 2
+      },
+      {
+        "method": "GET",
+        "uri": "/api/livestream/search",
+        "status": 200,
+        "requests": 2
+      },
+      {
+        "method": "POST",
+        "uri": "/api/register",
+        "status": 400,
+        "requests": 1
+      },
+      {
+        "method": "GET",
+        "uri": "/api/livestream/7540/livecomment",
+        "status": 499,
+        "requests": 1
+      },
+      {
+        "method": "POST",
+        "uri": "/api/initialize",
+        "status": 200,
+        "requests": 1
+      },
+      {
+        "method": "POST",
+        "uri": "/api/register",
+        "status": 500,
+        "requests": 1
+      },
+      {
+        "method": "GET",
+        "uri": "/api/user/xmiura0/icon",
+        "status": 499,
+        "requests": 1
+      },
+      {
+        "method": "POST",
+        "uri": "/api/livestream/reservation",
+        "status": 499,
+        "requests": 1
+      },
+      {
+        "method": "POST",
+        "uri": "/api/register",
+        "status": 499,
+        "requests": 1
+      },
+      {
+        "method": "GET",
+        "uri": "/api/user/yamamotomai0/statistics",
+        "status": 499,
+        "requests": 1
+      },
+      {
+        "method": "GET",
+        "uri": "/api/user/satomiishii0/statistics",
+        "status": 499,
+        "requests": 1
+      },
+      {
+        "method": "GET",
+        "uri": "/api/livestream/7531/livecomment",
+        "status": 499,
+        "requests": 1
+      },
+      {
+        "method": "GET",
+        "uri": "/api/livestream/7541/livecomment",
+        "status": 499,
+        "requests": 1
+      },
+      {
+        "method": "POST",
+        "uri": "/api/livestream/7535/enter",
+        "status": 499,
+        "requests": 1
+      },
+      {
+        "method": "GET",
+        "uri": "/api/user/vkobayashi0/statistics",
+        "status": 499,
+        "requests": 1
+      },
+      {
+        "method": "POST",
+        "uri": "/api/icon",
+        "status": 499,
+        "requests": 1
+      },
+      {
+        "method": "GET",
+        "uri": "/api/livestream/search",
+        "status": 499,
+        "requests": 1
+      },
+      {
+        "method": "GET",
+        "uri": "/api/payment",
+        "status": 200,
+        "requests": 1
+      },
+      {
+        "method": "GET",
+        "uri": "/api/tag",
+        "status": 200,
+        "requests": 1
+      },
+      {
+        "method": "GET",
+        "uri": "/api/user/kazuya580/statistics",
+        "status": 499,
+        "requests": 1
+      },
+      {
+        "method": "POST",
+        "uri": "/api/livestream/7551/moderate",
+        "status": 499,
+        "requests": 1
+      },
+      {
+        "method": "GET",
+        "uri": "/api/user/tsubasatakahashi0/icon",
+        "status": 499,
+        "requests": 1
+      },
+      {
+        "method": "POST",
+        "uri": "/api/livestream/7529/reaction",
+        "status": 499,
+        "requests": 1
+      },
+      {
+        "method": "GET",
+        "uri": "/api/livestream/7550/livecomment",
+        "status": 499,
+        "requests": 1
+      },
+      {
+        "method": "POST",
+        "uri": "/api/livestream/7530/moderate",
+        "status": 499,
+        "requests": 1
+      }
+    ],
+    "http_5xx": [
+      {
+        "method": "POST",
+        "uri": "/api/register",
+        "status": 500,
+        "requests": 1
+      },
+      {
+        "method": "GET",
+        "uri": "/api/livestream/7525/report",
+        "status": 500,
+        "requests": 1
+      }
+    ],
+    "api_host_metrics": [
+      {
+        "host": "isucon-1",
+        "points": 60
+      },
+      {
+        "host": "isucon-2",
+        "points": 60
+      },
+      {
+        "host": "isucon-3",
+        "points": 60
+      }
+    ],
+    "api_mysql": [
+      {
+        "host": "isucon-1",
+        "points": 60
+      },
+      {
+        "host": "isucon-2",
+        "points": 60
+      },
+      {
+        "host": "isucon-3",
+        "points": 60
+      }
+    ],
+    "api_timeline": [
+      {
+        "buckets": 153,
+        "warning_events": 60
+      }
+    ],
+    "api_pprof": [
+      {
+        "kind": "allocs",
+        "host": "isucon-1",
+        "source": "isucon-1-go-allocs.pprof",
+        "sample_type": "alloc_space",
+        "sample_unit": "bytes",
+        "duration_sec": 0,
+        "total": 333613155
+      },
+      {
+        "kind": "allocs",
+        "host": "isucon-2",
+        "source": "isucon-2-go-allocs.pprof",
+        "sample_type": "alloc_space",
+        "sample_unit": "bytes",
+        "duration_sec": 0,
+        "total": 28315580
+      },
+      {
+        "kind": "allocs",
+        "host": "isucon-3",
+        "source": "isucon-3-go-allocs.pprof",
+        "sample_type": "alloc_space",
+        "sample_unit": "bytes",
+        "duration_sec": 0,
+        "total": 24884890
+      },
+      {
+        "kind": "cpu",
+        "host": "isucon-1",
+        "source": "isucon-1-go-cpu.pprof",
+        "sample_type": "cpu",
+        "sample_unit": "nanoseconds",
+        "duration_sec": 180.002510583,
+        "total": 17380000000
+      },
+      {
+        "kind": "cpu",
+        "host": "isucon-2",
+        "source": "isucon-2-go-cpu.pprof",
+        "sample_type": "cpu",
+        "sample_unit": "nanoseconds",
+        "duration_sec": 180.000421541,
+        "total": 1390000000
+      },
+      {
+        "kind": "cpu",
+        "host": "isucon-3",
+        "source": "isucon-3-go-cpu.pprof",
+        "sample_type": "cpu",
+        "sample_unit": "nanoseconds",
+        "duration_sec": 180.000991159,
+        "total": 1470000000
+      },
+      {
+        "kind": "goroutine",
+        "host": "isucon-1",
+        "source": "isucon-1-go-goroutine.pprof",
+        "sample_type": "goroutine",
+        "sample_unit": "count",
+        "duration_sec": 0,
+        "total": 65
+      },
+      {
+        "kind": "goroutine",
+        "host": "isucon-2",
+        "source": "isucon-2-go-goroutine.pprof",
+        "sample_type": "goroutine",
+        "sample_unit": "count",
+        "duration_sec": 0,
+        "total": 13
+      },
+      {
+        "kind": "goroutine",
+        "host": "isucon-3",
+        "source": "isucon-3-go-goroutine.pprof",
+        "sample_type": "goroutine",
+        "sample_unit": "count",
+        "duration_sec": 0,
+        "total": 13
+      },
+      {
+        "kind": "heap",
+        "host": "isucon-1",
+        "source": "isucon-1-go-heap.pprof",
+        "sample_type": "inuse_space",
+        "sample_unit": "bytes",
+        "duration_sec": 0,
+        "total": 8488261
+      },
+      {
+        "kind": "heap",
+        "host": "isucon-2",
+        "source": "isucon-2-go-heap.pprof",
+        "sample_type": "inuse_space",
+        "sample_unit": "bytes",
+        "duration_sec": 0,
+        "total": 2854231
+      },
+      {
+        "kind": "heap",
+        "host": "isucon-3",
+        "source": "isucon-3-go-heap.pprof",
+        "sample_type": "inuse_space",
+        "sample_unit": "bytes",
+        "duration_sec": 0,
+        "total": 1737040
+      }
+    ],
+    "api_fgprof": [
+      {
+        "host": "isucon-1",
+        "duration_sec": 180.000660235,
+        "total_ms": 4945373.68792
+      },
+      {
+        "host": "isucon-2",
+        "duration_sec": 180.000075736,
+        "total_ms": 1800020.18402
+      },
+      {
+        "host": "isucon-3",
+        "duration_sec": 180.000280478,
+        "total_ms": 1799969.67897
+      }
+    ],
+    "profile_unresolved": null,
+    "profile_windows": [
+      {
+        "host": "isucon-1",
+        "source": "isucon-1-fgprof.pprof",
+        "captured_at": "2026-09-30 07:20:28.745313+09",
+        "duration_seconds": 180.000660235,
+        "covers_load_or_snapshot_inside": true
+      },
+      {
+        "host": "isucon-1",
+        "source": "isucon-1-go-allocs.pprof",
+        "captured_at": "2026-09-30 07:21:28.793442+09",
+        "duration_seconds": 0.0,
+        "covers_load_or_snapshot_inside": true
+      },
+      {
+        "host": "isucon-1",
+        "source": "isucon-1-go-cpu.pprof",
+        "captured_at": "2026-09-30 07:20:28.747883+09",
+        "duration_seconds": 180.002510583,
+        "covers_load_or_snapshot_inside": true
+      },
+      {
+        "host": "isucon-1",
+        "source": "isucon-1-go-goroutine.pprof",
+        "captured_at": "2026-09-30 07:21:28.78982+09",
+        "duration_seconds": 0.0,
+        "covers_load_or_snapshot_inside": true
+      },
+      {
+        "host": "isucon-1",
+        "source": "isucon-1-go-heap.pprof",
+        "captured_at": "2026-09-30 07:21:28.790861+09",
+        "duration_seconds": 0.0,
+        "covers_load_or_snapshot_inside": true
+      },
+      {
+        "host": "isucon-2",
+        "source": "isucon-2-fgprof.pprof",
+        "captured_at": "2026-09-30 07:20:28.749852+09",
+        "duration_seconds": 180.000075736,
+        "covers_load_or_snapshot_inside": true
+      },
+      {
+        "host": "isucon-2",
+        "source": "isucon-2-go-allocs.pprof",
+        "captured_at": "2026-09-30 07:21:28.763364+09",
+        "duration_seconds": 0.0,
+        "covers_load_or_snapshot_inside": true
+      },
+      {
+        "host": "isucon-2",
+        "source": "isucon-2-go-cpu.pprof",
+        "captured_at": "2026-09-30 07:20:28.753745+09",
+        "duration_seconds": 180.000421541,
+        "covers_load_or_snapshot_inside": true
+      },
+      {
+        "host": "isucon-2",
+        "source": "isucon-2-go-goroutine.pprof",
+        "captured_at": "2026-09-30 07:21:28.769819+09",
+        "duration_seconds": 0.0,
+        "covers_load_or_snapshot_inside": true
+      },
+      {
+        "host": "isucon-2",
+        "source": "isucon-2-go-heap.pprof",
+        "captured_at": "2026-09-30 07:21:28.770745+09",
+        "duration_seconds": 0.0,
+        "covers_load_or_snapshot_inside": true
+      },
+      {
+        "host": "isucon-3",
+        "source": "isucon-3-fgprof.pprof",
+        "captured_at": "2026-09-30 07:20:28.74913+09",
+        "duration_seconds": 180.000280478,
+        "covers_load_or_snapshot_inside": true
+      },
+      {
+        "host": "isucon-3",
+        "source": "isucon-3-go-allocs.pprof",
+        "captured_at": "2026-09-30 07:21:28.764118+09",
+        "duration_seconds": 0.0,
+        "covers_load_or_snapshot_inside": true
+      },
+      {
+        "host": "isucon-3",
+        "source": "isucon-3-go-cpu.pprof",
+        "captured_at": "2026-09-30 07:20:28.743276+09",
+        "duration_seconds": 180.000991159,
+        "covers_load_or_snapshot_inside": true
+      },
+      {
+        "host": "isucon-3",
+        "source": "isucon-3-go-goroutine.pprof",
+        "captured_at": "2026-09-30 07:21:28.772099+09",
+        "duration_seconds": 0.0,
+        "covers_load_or_snapshot_inside": true
+      },
+      {
+        "host": "isucon-3",
+        "source": "isucon-3-go-heap.pprof",
+        "captured_at": "2026-09-30 07:21:28.769633+09",
+        "duration_seconds": 0.0,
+        "covers_load_or_snapshot_inside": true
+      }
+    ]
+  },
+  "identity_categories": [
+    {
+      "category": "anonymous_or_failed_auth",
+      "status": 200,
+      "requests": 4
+    },
+    {
+      "category": "anonymous_or_failed_auth",
+      "status": 401,
+      "requests": 2
+    },
+    {
+      "category": "client_canceled",
+      "status": 499,
+      "requests": 17
+    },
+    {
+      "category": "registration",
+      "status": 201,
+      "requests": 206
+    },
+    {
+      "category": "registration",
+      "status": 400,
+      "requests": 1
+    },
+    {
+      "category": "registration",
+      "status": 499,
+      "requests": 1
+    },
+    {
+      "category": "registration",
+      "status": 500,
+      "requests": 1
+    }
+  ],
+  "load_warning_details": [
+    {
+      "line": "2026-09-29T22:21:56.900Z\twarn\tstaff-logger\tscenario/viewer.go:178\tviewer_spam: failed to post livecomment (moderated spam): benchmark-application: [一般エラー] POST /api/livestream/7538/livecomment へのリクエストに対して、期待されたHTTPステータスコードが確認できませんでした (expected:400, actual:201)"
+    },
+    {
+      "line": "2026-09-29T22:21:36.944Z\twarn\tstaff-logger\tscenario/streamer.go:198\taggressive streamer moderate: failed to visit livestream admin: benchmark-application: [一般エラー] GET /api/livestream/7525/report へのリクエストに対して、期待されたHTTPステータスコードが確認できませんでした (expected:200, actual:500)"
+    }
+  ],
+  "manifest": {
+    "phase": "finalized",
+    "source": {
+      "commit": "079963db7945a36a218c5db6400ba1d46b5e3099",
+      "branch": "main"
+    },
+    "finalized_at": "2026-09-30T07:23:32+09:00",
+    "profiles_enabled": true,
+    "preflight": {
+      "collector_clean": true
+    },
+    "load_window": {
+      "started_at": "2026-09-29T22:20:30.134789777Z",
+      "ended_at": "2026-09-29T22:22:16.585543577Z",
+      "duration_ms": 106450,
+      "source": "bench.log",
+      "status": "ok",
+      "reason": ""
+    }
+  },
+  "score_api": {
+    "run_id": "20260930-072026",
+    "score": 3800,
+    "passed": true,
+    "addition": null,
+    "deduction": null,
+    "routes": [],
+    "app": "isucon-1,isucon-2,isucon-3",
+    "nginx": "isucon-1,isucon-2,isucon-3",
+    "mysql": "isucon-1",
+    "app_traffic": "isucon-1,isucon-2,isucon-3"
+  },
+  "slowquery_api": {
+    "run_id": "20260930-072026",
+    "available": true,
+    "total_query_count": 12904,
+    "unique_query_count": 63,
+    "total_query_time_sum": 374.2502220000001,
+    "total_lock_time_sum": 0.23056100000000013,
+    "total_rows_examined_sum": 72536422,
+    "total_rows_sent_sum": 62836,
+    "total_classes": 63,
+    "truncated": true
+  },
+  "analysis_query_files": [
+    ".task/measurement-review-072026.sql",
+    ".task/measurement-review-072026-extra.sql"
+  ]
+}
