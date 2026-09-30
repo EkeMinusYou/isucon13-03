@@ -36,6 +36,7 @@ tools/contest/README.md
 Taskfile.contest.yml
 docs/conversation
 docs/official
+docs/role-split.md
 etc
 generated
 mysql

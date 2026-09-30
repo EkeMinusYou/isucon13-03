@@ -1,13 +1,29 @@
-# Each host retains an independent local application and DNS database.
+# DNS runs on its own host; the application and DNS share one remote MySQL.
 include: [../deployctl/deployments.yaml]
 
 deployments:
+  topology-config:
+    uploads:
+      - &topology_env {label: topology environment, role: all, local: tools/contest/generated/topology.env, remote: /home/isucon/topology.env}
+      - &pdns_config {label: host-specific PowerDNS configuration, role: all, local: 'etc/hosts/{host}/powerdns/', remote: /etc/powerdns/, delete: true, validate: 'sudo pdns_server --config=check'}
+      - &pdns_unit {label: PowerDNS systemd drop-in, role: all, local: etc/systemd/system/pdns.service.d/, remote: /etc/systemd/system/pdns.service.d/}
+      - &zone_boot {label: DNS boot initialization, role: all, local: etc/vendor-scripts/init_zone_once.sh, remote: /usr/local/bin/isupipe-init-zone-once.sh, validate: 'bash -n /usr/local/bin/isupipe-init-zone-once.sh'}
+    activations:
+      - label: reload topology units
+        role: all
+        script: |
+          set -eu
+          sudo chmod 0755 /usr/local/bin/isupipe-init-zone-once.sh
+          sudo systemctl daemon-reload
+
   app:
     uploads:
       - &app_code {label: application, role: app, local: '{var:app_dir}/', remote: '{var:remote_home}/{var:app_dir}/', delete: true, excludes: ['*.pprof', default.pgo]}
       - &app_unit {label: systemd unit, role: app, local: 'etc/systemd/system/{var:service}.service', remote: '/etc/systemd/system/{var:service}.service'}
-      - &sql_assets {label: SQL and DNS schema assets, role: mysql, local: '{var:sql_dir}/', remote: '{var:remote_home}/{var:sql_dir}/', delete: true}
-      - &zone_assets {label: DNS initialization assets, role: mysql, local: webapp/pdns/, remote: '{var:remote_home}/webapp/pdns/', delete: true}
+      - &app_sql {label: application initialization SQL, role: app, local: '{var:sql_dir}/', remote: '{var:remote_home}/{var:sql_dir}/', delete: true}
+      - &app_zone {label: application DNS initialization assets, role: app, local: webapp/pdns/, remote: '{var:remote_home}/webapp/pdns/', delete: true}
+      - {label: application topology environment, role: app, local: tools/contest/generated/topology.env, remote: /home/isucon/topology.env}
+      - {label: application DNS client configuration, role: app, local: 'etc/hosts/{host}/powerdns/', remote: /etc/powerdns/, delete: true, validate: 'sudo pdns_server --config=check'}
     activations: &app_activation
       - label: restart application
         role: app
@@ -20,37 +36,50 @@ deployments:
           sudo systemctl is-active --quiet {var:service}
 
   app-after-schema:
-    uploads: [*app_code, *app_unit]
+    uploads: [*app_code, *app_unit, *app_sql, *app_zone]
     activations: *app_activation
 
+  app-stop:
+    activations:
+      - label: stop all application writers before reset
+        role: all
+        script: |
+          set -eu
+          sudo systemctl stop {var:service}
+          test "$(sudo systemctl show {var:service} -p MainPID --value)" = 0
+          test "$(sudo systemctl show {var:service} -p ActiveState --value)" = inactive
+
   pdns-config:
-    uploads: &pdns_uploads
-      - label: host-specific PowerDNS configuration
-        role: mysql
-        local: 'etc/hosts/{host}/powerdns/'
-        remote: /etc/powerdns/
-        delete: true
-        validate: sudo pdns_server --config=check
-      - label: PowerDNS systemd drop-in
-        role: mysql
-        local: etc/systemd/system/pdns.service.d/
-        remote: /etc/systemd/system/pdns.service.d/
+    uploads: [*topology_env, *pdns_config, *pdns_unit, *zone_boot]
 
   pdns:
-    uploads: *pdns_uploads
-    activations:
-      - label: restart PowerDNS
-        role: mysql
+    uploads: [*topology_env, *pdns_config, *pdns_unit, *zone_boot]
+    activations: &dns_restart
+      - label: restart DNS server
+        role: dns
         script: |
           set -eu
           sudo systemctl daemon-reload
           sudo systemctl restart pdns
           sudo systemctl is-active --quiet pdns
 
+  dns-restart:
+    activations: *dns_restart
+
+  db-access:
+    uploads:
+      - {label: remote database users, role: app_db, local: tools/contest/generated/remote-users.sql, remote: /home/isucon/remote-users.sql}
+    activations:
+      - label: grant database access to the DNS and application hosts
+        role: app_db
+        script: |
+          set -eu
+          sudo mysql < /home/isucon/remote-users.sql
+
   dns-stop:
     activations:
-      - label: stop DNS database writers
-        role: mysql
+      - label: stop all DNS database writers
+        role: all
         script: |
           set -eu
           sudo systemctl stop pdns
@@ -58,13 +87,14 @@ deployments:
           test "$(sudo systemctl show pdns -p ActiveState --value)" = inactive
 
   db-schema:
-    uploads: [*sql_assets, *zone_assets]
+    uploads:
+      - {label: SQL and DNS schema assets, role: app_db, local: '{var:sql_dir}/', remote: '{var:remote_home}/{var:sql_dir}/', delete: true}
     activations:
-      - label: recreate both local competition databases
-        role: mysql
+      - label: recreate both shared competition databases
+        role: app_db
         script: |
           set -eu
-          sudo chown -R {var:isucon_user}:{var:isucon_user} {var:remote_home}/webapp/sql {var:remote_home}/webapp/pdns
+          sudo chown -R {var:isucon_user}:{var:isucon_user} {var:remote_home}/webapp/sql
           sudo mysql -e 'DROP DATABASE IF EXISTS isupipe; CREATE DATABASE isupipe; DROP DATABASE IF EXISTS isudns; CREATE DATABASE isudns;'
           sudo mysql isupipe < {var:remote_home}/{var:sql_dir}/{var:sql_schema_file}
           sudo mysql isudns < {var:remote_home}/webapp/sql/schema/pdns.sql
@@ -72,7 +102,7 @@ deployments:
   dns-start:
     activations:
       - label: start DNS after schema recreation
-        role: mysql
+        role: dns
         script: |
           set -eu
           sudo systemctl start pdns
@@ -80,19 +110,19 @@ deployments:
 
   app-initialize:
     activations:
-      - label: initialize each independent application and DNS database
-        role: app
+      - label: initialize shared application and DNS data once
+        role: app_init
         script: |
           set -eu
           curl --fail-with-body --silent --show-error --max-time 42 -X POST 'http://127.0.0.1:{var:listen_port}{var:initialize_path}'
 
   dns-roles:
     activations:
-      - label: enable DNS services alongside their local databases
+      - label: apply DNS server roles
         role: all
         script: |
           set -eu
-          case ',{var:mysql_hosts},' in
+          case ',{var:dns_hosts},' in
             *',{host},'*) sudo systemctl enable --now pdns; sudo systemctl is-active --quiet pdns ;;
             *) sudo systemctl disable --now pdns ;;
           esac
@@ -100,16 +130,21 @@ deployments:
 plans:
   deploy-all:
     deployments:
-      sysctl: {}
-      mysql: {}
-      pdns: {needs: [mysql]}
-      app: {needs: [pdns]}
-      nginx: {needs: [app]}
+      topology-config: {}
+      mysql: {needs: [topology-config]}
+      db-access: {needs: [mysql]}
+      dns-restart: {needs: [db-access]}
+      app-after-schema: {needs: [dns-restart]}
+      nginx: {needs: [app-after-schema]}
   db-recreate:
     deployments:
-      app-stop: {}
+      topology-config: {}
+      app-stop: {needs: [topology-config]}
       dns-stop: {needs: [app-stop]}
-      db-schema: {needs: [dns-stop]}
+      roles-off: {needs: [dns-stop]}
+      mysql: {needs: [roles-off]}
+      db-access: {needs: [mysql]}
+      db-schema: {needs: [db-access]}
       dns-start: {needs: [db-schema]}
       app-after-schema: {needs: [dns-start]}
       app-initialize: {needs: [app-after-schema]}

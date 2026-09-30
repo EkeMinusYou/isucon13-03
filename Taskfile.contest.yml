@@ -9,13 +9,73 @@
 version: '3'
 
 tasks:
+  inspect-role-split-prereqs:
+    desc: 全ホストのOS/Arch・firewallと移行先DBの接続ユーザーを読み取り確認する
+    cmds:
+      - for: { var: ALL_HOSTS }
+        cmd: |
+          {{.SSH}} {{.SSH_USER}}@{{.ITEM}} '
+            set -eu
+            uname -sm
+            sudo ufw status
+            if [ "{{.ITEM}}" = "{{.MYSQL_HOST}}" ]; then
+              sudo mysql -N -e "SELECT User,Host FROM mysql.user WHERE User IN (\"isucon\",\"isudns\")"
+            fi
+          '
+
+  deploy-role-split:
+    desc: DNS・共有DB・Go/nginxを役割分離し、競技DB再作成・初期化・永続性確認まで行う
+    preconditions:
+      - sh: test ! -f '{{.RUN_STATE_FILE}}'
+        msg: active benchmark exists
+    deps: [build-measurectl]
+    cmds:
+      - '{{.MEASURECTL_DIR}}/measurectl collect check-clean {{.MEASURECTL_REMOTE}}'
+      - for: { var: ALL_HOSTS }
+        cmd: |
+          {{.SSH}} {{.SSH_USER}}@{{.ITEM}} '
+            set -eu
+            test "$(uname -s)" = Linux
+            test "$(uname -m)" = x86_64
+            if sudo systemctl is-active --quiet {{.SERVICE}}; then
+              test "$(curl --fail --silent http://127.0.0.1:6060/debug/profiles/status)" = "{\"cpu\":\"\",\"fgprof\":\"\"}"
+            fi
+          '
+      - task: gen
+      - task: build
+      - task: db-recreate
+      - task: deploy-nginx
+      - task: apply-roles
+      - task: check-role-split
+      - task: check-app-deployment
+        vars: { ICON_SMOKE_PHASE: write, REGISTRATION_SMOKE_PHASE: write }
+      - task: deploy-all
+      - task: check-app-deployment
+        vars: { ICON_SMOKE_PHASE: read, REGISTRATION_SMOKE_PHASE: read }
+      - task: check-role-split
+
+  deploy-role-split-dry:
+    desc: 役割分離のDB再作成・配布・起動順を実行せず表示する
+    cmds:
+      - task: gen
+      - task: build
+      - task: db-recreate-dry
+      - task: deploy-all-dry
+
+  check-role-split:
+    desc: 役割分離後のサービス・DB接続・DNS応答を確認する
+    cmds:
+      - task: check-roles
+      - task: check-network
+      - task: check-pdns
+
   check-icon-unit:
     desc: 永続アイコン・条件付きGETのローカルrace testを実行する
     dir: '{{.APP_DIR}}'
     cmds: [go test -race ./...]
 
   deploy-icons:
-    desc: 永続アイコン構成を3台へ配布し、DB再作成・初期化・nginx reload・再起動後の画像確認を行う
+    desc: 永続アイコン構成を配布し、DB再作成・初期化・nginx reload・再起動後の画像確認を行う
     preconditions:
       - sh: test ! -f '{{.RUN_STATE_FILE}}'
         msg: active benchmark exists
@@ -29,7 +89,7 @@ tasks:
       - task: check-icons-deployment
 
   check-icons-deployment:
-    desc: nginx経由の画像・条件付きGET・更新反映・アプリ再起動後の永続性を3台で確認する
+    desc: nginx経由の画像・条件付きGET・アプリ再起動後の永続性を確認する
     preconditions:
       - sh: test ! -f '{{.RUN_STATE_FILE}}'
         msg: active benchmark exists
@@ -47,6 +107,8 @@ tasks:
     deps: [build-measurectl]
     cmds:
       - '{{.MEASURECTL_DIR}}/measurectl collect check-clean {{.MEASURECTL_REMOTE}}'
+      - for: { var: APP_HOSTS }
+        cmd: '{{.SSH}} {{.SSH_USER}}@{{.ITEM}} ''test "$(curl --fail --silent http://127.0.0.1:6060/debug/profiles/status)" = "{\"cpu\":\"\",\"fgprof\":\"\"}"'''
       - mkdir -p .task/app-improvements
       - cd '{{.APP_DIR}}' && {{.GO_BUILD_ENV}} go test -c -o '{{.ROOT_DIR}}/.task/app-improvements/app.test' .
       - for: { var: MYSQL_HOSTS }
@@ -58,7 +120,6 @@ tasks:
             set -eu
             test "$(uname -s)" = Linux
             test "$(uname -m)" = x86_64
-            test "$(curl --fail --silent http://127.0.0.1:6060/debug/profiles/status)" = "{\"cpu\":\"\",\"fgprof\":\"\"}"
             cd {{.REMOTE_HOME}}/{{.APP_DIR}}
             sudo env ISUCON_TEST_MYSQL_DSN="root@unix(/var/run/mysqld/mysqld.sock)/" \
               ISUCON_TEST_SCHEMA=/tmp/isucon-app-improvements/schema.sql \
@@ -75,7 +136,7 @@ tasks:
       BINARY_SHA256:
         sh: shasum -a 256 '{{.APP_DIR}}/{{.APP_NAME}}' | cut -d ' ' -f 1
     cmds:
-      - for: { var: MYSQL_HOSTS }
+      - for: { var: APP_HOSTS }
         cmd: |
           {{.SSH}} {{.SSH_USER}}@{{.ITEM}} '
             set -eu
@@ -83,19 +144,25 @@ tasks:
             test "$pid" -gt 0
             actual=$(sudo sha256sum "/proc/$pid/exe" | cut -d " " -f 1)
             test "$actual" = "{{.BINARY_SHA256}}"
+            echo "{{.ITEM}}: running binary matches"
+          '
+      - for: { var: MYSQL_HOSTS }
+        cmd: |
+          {{.SSH}} {{.SSH_USER}}@{{.ITEM}} '
+            set -eu
             indexes=$(sudo mysql -N -e "SELECT COUNT(DISTINCT TABLE_NAME, INDEX_NAME) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=\"{{.DB_NAME}}\" AND INDEX_NAME LIKE \"idx_%\"")
             test "$indexes" -eq 10
             columns=$(sudo mysql -N -e "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=\"{{.DB_NAME}}\" AND ((TABLE_NAME=\"users\" AND COLUMN_NAME=\"icon_hash\") OR (TABLE_NAME=\"icons\" AND COLUMN_NAME=\"hash\"))")
             test "$columns" -eq 2
             blobs=$(sudo mysql -N -e "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=\"{{.DB_NAME}}\" AND TABLE_NAME=\"icons\" AND DATA_TYPE LIKE \"%blob\"")
             test "$blobs" -eq 0
-            echo "{{.ITEM}}: running binary matches; all 10 indexes and icon metadata columns exist; no icon BLOB"
+            echo "{{.ITEM}}: all 10 indexes and icon metadata columns exist; no icon BLOB"
             sudo mysql -t {{.DB_NAME}} -e "EXPLAIN SELECT * FROM livestream_tags WHERE livestream_id = 1"
             sudo mysql -t {{.DB_NAME}} -e "EXPLAIN SELECT * FROM reservation_slots WHERE start_at >= 1700874000 AND start_at < 1700877600 AND end_at <= 1700877600 FOR UPDATE"
           '
       - '{{.SSH}} {{.SSH_USER}}@{{.ENTRY_HOST}} ''mkdir -p {{.SMOKE_REMOTE_DIR}}'''
       - '{{.RSYNC}} {{.SMOKE_TOOL_DIR}}/smoke {{.SSH_USER}}@{{.ENTRY_HOST}}:{{.SMOKE_REMOTE_DIR}}/smoke'
-      - '{{.SSH}} {{.SSH_USER}}@{{.ENTRY_HOST}} ''{{.SMOKE_REMOTE_DIR}}/smoke {{.SMOKE_ARGS}} -icons-phase "{{.ICON_SMOKE_PHASE | default ""}}"'''
+      - '{{.SSH}} {{.SSH_USER}}@{{.ENTRY_HOST}} ''{{.SMOKE_REMOTE_DIR}}/smoke {{.SMOKE_ARGS}} -icons-phase "{{.ICON_SMOKE_PHASE | default ""}}" -registration-phase "{{.REGISTRATION_SMOKE_PHASE | default ""}}" -dns-server {{.PDNS_IP}}:53 -dns-address {{.DNS_RECORD_ADDRESS}}'''
 
   setup-contest-assets:
     desc: 競技固有の依存サービス資材を取得
@@ -105,12 +172,57 @@ tasks:
     desc: deployへ載せる前にDB資材を生成・検証する（deploy系のhook、既定は何もしない）
 
   gen-contest-routing:
-    desc: 解法固有のupstreamとホスト別生成物を追加する（genのhook、既定は何もしない）
+    desc: Taskfileの役割値からDB・DNS接続設定を生成する
+    cmds:
+      - mkdir -p tools/contest/generated
+      - |
+        cat > tools/contest/generated/topology.env <<'ENV'
+        # GENERATED by task gen; host credentials remain in /home/isucon/env.sh.
+        ISUCON13_MYSQL_DIALCONFIG_ADDRESS={{.MYSQL_IP}}
+        ISUCON13_MYSQL_DIALCONFIG_PORT=3306
+        ISUCON13_POWERDNS_SUBDOMAIN_ADDRESS={{.DNS_RECORD_ADDRESS}}
+        ENV
+      - |
+        cat > mysql/mysql.conf.d/zz-topology.cnf <<'CNF'
+        # GENERATED by task gen; listen on the database host's private address.
+        [mysqld]
+        bind-address={{.MYSQL_IP}}
+        CNF
+      - for: { var: ALL_HOSTS }
+        cmd: |
+          printf 'gmysql-host=%s\n' '{{.MYSQL_IP}}' > etc/hosts/{{.ITEM}}/powerdns/pdns.d/gmysql-host.conf
+      - |
+        cat > tools/contest/generated/remote-users.sql <<'SQL'
+        -- GENERATED by task gen. Reuse local authentication without exporting credentials.
+        SELECT CONCAT('CREATE USER IF NOT EXISTS ', QUOTE(User), '@', QUOTE('{{index .IP (splitList " " .APP_HOSTS | first)}}'),
+                      ' IDENTIFIED WITH ', plugin, ' AS ', QUOTE(authentication_string)) INTO @app_user_sql
+        FROM mysql.user WHERE User = 'isucon' AND Host = 'localhost';
+        PREPARE app_user FROM @app_user_sql;
+        EXECUTE app_user;
+        DEALLOCATE PREPARE app_user;
+        GRANT ALL PRIVILEGES ON isupipe.* TO 'isucon'@'{{index .IP (splitList " " .APP_HOSTS | first)}}';
+
+        SELECT CONCAT('CREATE USER IF NOT EXISTS ', QUOTE(User), '@', QUOTE('{{.PDNS_IP}}'),
+                      ' IDENTIFIED WITH ', plugin, ' AS ', QUOTE(authentication_string)) INTO @dns_user_sql
+        FROM mysql.user WHERE User = 'isudns' AND Host = 'localhost';
+        PREPARE dns_user FROM @dns_user_sql;
+        EXECUTE dns_user;
+        DEALLOCATE PREPARE dns_user;
+        GRANT ALL PRIVILEGES ON isudns.* TO 'isudns'@'{{.PDNS_IP}}';
+
+        SELECT CONCAT('CREATE USER IF NOT EXISTS ', QUOTE(User), '@', QUOTE('{{index .IP (splitList " " .APP_HOSTS | first)}}'),
+                      ' IDENTIFIED WITH ', plugin, ' AS ', QUOTE(authentication_string)) INTO @dns_client_sql
+        FROM mysql.user WHERE User = 'isudns' AND Host = 'localhost';
+        PREPARE dns_client FROM @dns_client_sql;
+        EXECUTE dns_client;
+        DEALLOCATE PREPARE dns_client;
+        GRANT ALL PRIVILEGES ON isudns.* TO 'isudns'@'{{index .IP (splitList " " .APP_HOSTS | first)}}';
+        SQL
 
   setup-pdns:
     desc: PowerDNSのホスト別設定・unit・公式schemaと環境を取得
     cmds:
-      - for: { var: MYSQL_HOSTS }
+      - for: { var: ALL_HOSTS }
         cmd: |
           mkdir -p etc/hosts/{{.ITEM}}/powerdns
           {{.RSYNC}} {{.SSH_USER}}@{{.ITEM}}:/etc/powerdns/ etc/hosts/{{.ITEM}}/powerdns/
@@ -119,7 +231,7 @@ tasks:
       - '{{.RSYNC}} {{.SSH_USER}}@{{.CONF_SRC}}:/lib/systemd/system/pdns.service etc/vendor-units/'
       - '{{.RSYNC}} {{.SSH_USER}}@{{.CONF_SRC}}:/etc/systemd/system/pdns.service.d/ etc/systemd/system/pdns.service.d/'
       - '{{.RSYNC}} --copy-links {{.SSH_USER}}@{{.MYSQL_HOST}}:/usr/share/doc/pdns-backend-mysql/schema.mysql.sql webapp/sql/schema/pdns.sql'
-      - '{{.RSYNC}} {{.SSH_USER}}@{{.CONF_SRC}}:/opt/init_zone_once.sh etc/vendor-scripts/'
+      - '{{.RSYNC}} {{.SSH_USER}}@{{.CONF_SRC}}:/usr/local/bin/isupipe-init-zone-once.sh etc/vendor-scripts/init_zone_once.sh'
 
   config-check-pdns:
     desc: PowerDNSを正規配布先へ転送して構文検査（restartなし）
@@ -128,37 +240,48 @@ tasks:
         msg: active benchmark exists
     deps: [build-deployctl]
     cmds:
+      - task: gen
       - '{{.DEPLOYCTL_DIR}}/deployctl apply pdns-config -config {{.DEPLOYCTL_CONFIG}} {{.DEPLOYCTL_COMMON}}'
 
   deploy-pdns-dry:
     desc: PowerDNSの転送先とrestartを実行せず表示
     deps: [build-deployctl]
     cmds:
+      - task: gen
       - '{{.DEPLOYCTL_DIR}}/deployctl apply pdns -dry-run -config {{.DEPLOYCTL_CONFIG}} {{.DEPLOYCTL_COMMON}}'
 
   deploy-pdns:
-    desc: 全MYSQL_HOSTSのPowerDNS設定を配布してrestart
+    desc: PowerDNS設定を配布し、DNS役割のホストでrestart
     preconditions:
       - sh: test ! -f '{{.RUN_STATE_FILE}}'
         msg: active benchmark exists
     deps: [build-deployctl]
     cmds:
+      - task: gen
       - '{{.DEPLOYCTL_DIR}}/deployctl apply pdns -config {{.DEPLOYCTL_CONFIG}} {{.DEPLOYCTL_COMMON}}'
 
   check-pdns:
-    desc: 全MYSQL_HOSTSのPowerDNS enable・active・DNS応答を確認
+    desc: PowerDNSの役割とDNSが返すHTTP入口を確認
     cmds:
-      - for: { var: MYSQL_HOSTS }
+      - for: { var: ALL_HOSTS }
         cmd: |
           {{.SSH}} {{.SSH_USER}}@{{.ITEM}} '
             set -eu
-            sudo systemctl is-enabled --quiet pdns
-            sudo systemctl is-active --quiet pdns
-            sudo pdns_control list >/dev/null
-            . /home/isucon/env.sh
-            answer=$(dig +time=2 +tries=1 +short pipe.u.isucon.dev @127.0.0.1)
-            test "$answer" = "$ISUCON13_POWERDNS_SUBDOMAIN_ADDRESS"
-            printf "DNS A record: %s\n" "$answer"
+            case " {{.PDNS_HOSTS}} " in
+              *" {{.ITEM}} "*)
+                sudo systemctl is-enabled --quiet pdns
+                sudo systemctl is-active --quiet pdns
+                sudo pdns_control list >/dev/null
+                answer=$(dig +time=2 +tries=1 +short pipe.u.isucon.dev @127.0.0.1)
+                test "$answer" = "{{.DNS_RECORD_ADDRESS}}"
+                printf "DNS A record: %s\n" "$answer"
+                ;;
+              *)
+                ! sudo systemctl is-enabled --quiet pdns
+                ! sudo systemctl is-active --quiet pdns
+                echo "{{.ITEM}}: DNS disabled"
+                ;;
+            esac
           '
 
   setup-smoke-probes:

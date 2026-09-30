@@ -6,6 +6,7 @@ cd $(dirname $0)
 if test -f /home/isucon/env.sh; then
 	. /home/isucon/env.sh
 fi
+. /home/isucon/topology.env
 
 ISUCON_DB_HOST=${ISUCON13_MYSQL_DIALCONFIG_ADDRESS:-127.0.0.1}
 ISUCON_DB_PORT=${ISUCON13_MYSQL_DIALCONFIG_PORT:-3306}
@@ -69,5 +70,4 @@ mysql -u"$ISUCON_DB_USER" \
 		"$ISUCON_DB_NAME" < initial_livecomments.sql
 
 bash ../pdns/init_zone.sh 
-
 

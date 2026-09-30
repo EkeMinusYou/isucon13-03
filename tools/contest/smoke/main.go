@@ -1,5 +1,5 @@
 // Command smoke verifies the authenticated API, access logs, and profiles.
-// It runs on ENTRY_HOST and contacts each existing independent nginx.
+// It runs on ENTRY_HOST and verifies each configured nginx ingress.
 package main
 
 import (
@@ -24,9 +24,18 @@ import (
 func main() {
 	targets := flag.String("ingress", "127.0.0.1:443", "comma separated ingress addresses")
 	iconsPhase := flag.String("icons-phase", "", "write or read to check durable icon updates")
+	registrationPhase := flag.String("registration-phase", "", "write or read to check durable user and DNS registration")
+	dnsServer := flag.String("dns-server", "", "authoritative DNS server address")
+	dnsAddress := flag.String("dns-address", "", "expected public HTTP ingress address")
 	flag.Parse()
 	if *iconsPhase != "" && *iconsPhase != "write" && *iconsPhase != "read" {
 		log.Fatal("icons-phase must be write or read")
+	}
+	if *registrationPhase != "" && *registrationPhase != "write" && *registrationPhase != "read" {
+		log.Fatal("registration-phase must be write or read")
+	}
+	if *registrationPhase != "" && (*dnsServer == "" || net.ParseIP(*dnsAddress) == nil) {
+		log.Fatal("registration checks require dns-server and dns-address")
 	}
 	roots, err := x509.SystemCertPool()
 	if err != nil {
@@ -88,8 +97,58 @@ func main() {
 			}
 			fmt.Printf("%s: icon %s, content/hash/ETag, conditional GET and internal access checks passed\n", addr, *iconsPhase)
 		}
+		if *registrationPhase != "" {
+			if err := checkRegistration(client, *dnsServer, *dnsAddress, *registrationPhase == "write"); err != nil {
+				log.Fatal(err)
+			}
+			fmt.Printf("%s: user/DNS registration %s, login and subdomain HTTPS passed\n", addr, *registrationPhase)
+		}
 		transport.CloseIdleConnections()
 	}
+}
+
+func checkRegistration(client *http.Client, dnsServer, dnsAddress string, write bool) error {
+	const username = "role-split-smoke"
+	if write {
+		res, _, err := requestResponse(client, http.MethodPost, "/api/register", `{"name":"role-split-smoke","display_name":"Topology smoke","description":"Topology smoke","password":"topology-smoke-password","theme":{"dark_mode":true}}`, nil)
+		if err != nil {
+			return err
+		}
+		if res.StatusCode != http.StatusCreated {
+			return fmt.Errorf("registration: status %d", res.StatusCode)
+		}
+	}
+	if _, err := request(client, http.MethodPost, "/api/login", `{"username":"role-split-smoke","password":"topology-smoke-password"}`); err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	resolver := &net.Resolver{PreferGo: true, Dial: func(ctx context.Context, _, _ string) (net.Conn, error) {
+		return (&net.Dialer{Timeout: 2 * time.Second}).DialContext(ctx, "udp", dnsServer)
+	}}
+	addresses, err := resolver.LookupIP(ctx, "ip4", username+".u.isucon.dev")
+	if err != nil {
+		return fmt.Errorf("registered user DNS: %w", err)
+	}
+	if len(addresses) != 1 || !addresses[0].Equal(net.ParseIP(dnsAddress)) {
+		return fmt.Errorf("registered user DNS: expected %s, got %v", dnsAddress, addresses)
+	}
+	req, err := http.NewRequest(http.MethodGet, "https://"+username+".u.isucon.dev/api/user/"+username+"/theme", nil)
+	if err != nil {
+		return err
+	}
+	res, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("registered user subdomain HTTPS: %w", err)
+	}
+	defer res.Body.Close()
+	var theme struct {
+		DarkMode bool `json:"dark_mode"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&theme); err != nil || res.StatusCode != http.StatusOK || !theme.DarkMode {
+		return fmt.Errorf("registered user subdomain HTTPS: status %d, invalid theme: %v", res.StatusCode, err)
+	}
+	return nil
 }
 
 func request(client *http.Client, method, path, body string) ([]byte, error) {

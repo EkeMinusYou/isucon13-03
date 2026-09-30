@@ -35,6 +35,7 @@ vars:
     webapp/sql/initial_ngwords.sql webapp/sql/initial_livecomments.sql
     webapp/pdns/init_zone.sh webapp/pdns/u.isucon.dev.zone
     webapp/sql/schema/pdns.sql
+    tools/contest/generated/remote-users.sql
   # Adapt these reset assets and endpoint to the acquired official implementation.
   SQL_DIR: webapp/sql
   SQL_SCHEMA_FILE: initdb.d/10_schema.sql
@@ -64,14 +65,25 @@ vars:
       isucon-1: 172.31.40.191
       isucon-2: 172.31.37.38
       isucon-3: 172.31.41.146
-  APP_HOSTS: isucon-1 isucon-2 isucon-3
-  APP_TRAFFIC_HOSTS: isucon-1 isucon-2 isucon-3
-  NGINX_HOSTS: isucon-1 isucon-2 isucon-3
+  PUBLIC_IP:
+    map:
+      isucon-1: 54.250.213.246
+      isucon-2: 18.177.140.41
+      isucon-3: 13.231.248.152
+  APP_HOSTS: isucon-3
+  APP_TRAFFIC_HOSTS: isucon-3
+  NGINX_HOSTS: isucon-3
+  PDNS_HOSTS: isucon-1
+  PDNS_IP: '{{index .IP (splitList " " .PDNS_HOSTS | first)}}'
+  DNS_RECORD_ADDRESS: '{{index .PUBLIC_IP (splitList " " .NGINX_HOSTS | first)}}'
   # MYSQL_HOST is the detailed measurement source and default DB connection.
-  MYSQL_HOST: isucon-1
+  MYSQL_HOST: isucon-2
   # Deployment and service enable/disable targets; preserve the single-host default.
-  MYSQL_HOSTS: isucon-1 isucon-2 isucon-3
-  CONF_SRC: isucon-1
+  MYSQL_HOSTS: isucon-2
+  CONF_SRC: isucon-3
+  DEPLOYCTL_FLAGS: >-
+    -role dns={{splitList " " .PDNS_HOSTS | join ","}}
+    -var dns_hosts={{splitList " " .PDNS_HOSTS | join ","}}
   SMOKE_ARGS: '-ingress {{$ips := list}}{{range (splitList " " .NGINX_HOSTS)}}{{$ips = append $ips (printf "%s:443" (index $.IP .))}}{{end}}{{join "," $ips}}'
   # <<< contest values <<<
 
@@ -150,7 +162,6 @@ vars:
   MEASURECTL_REMOTE: '{{.MEASURECTL_SSH}} {{.MEASURECTL_ROLES}} {{.MEASURECTL_VARS}}'
   MEASURECTL_COMMON: '{{.MEASURECTL_FLAGS}} {{.MEASURECTL_REMOTE}}'
 
-  DEPLOYCTL_FLAGS: ''
   DEPLOYCTL_COMMON: >-
     {{.DEPLOYCTL_FLAGS}}
     -ssh-user {{.SSH_USER}}

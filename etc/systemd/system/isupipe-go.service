@@ -1,12 +1,12 @@
 [Unit]
 Description=isupipe-go
-After=syslog.target
-After=mysql.service
-Requires=mysql.service
+After=syslog.target network-online.target
+Wants=network-online.target
 
 [Service]
 WorkingDirectory=/home/isucon/webapp/go
 EnvironmentFile=/home/isucon/env.sh
+EnvironmentFile=/home/isucon/topology.env
 
 User=isucon
 Group=isucon

@@ -9,16 +9,16 @@ ISUCONの競技サーバーを、ローカルのリポジトリを正本とし�
 依頼された改善に必要なDB再作成や不要ファイルの削除などの破壊的変更を許容し、
 切り戻し専用の仕組みや旧実装の保持は求めません。公式の正当性・永続性・追試要件は維持します。
 
-この環境は`isucon-1`〜`isucon-3`をセットアップ済みです。各ホストのGo・nginx・MySQL・PowerDNSを管理します。
-構成・標準計測の確認結果は[セットアップ報告](docs/setup-report.md)を参照してください。
+現在は`isucon-1`がPowerDNS、`isucon-2`が共有MySQL、`isucon-3`がGo・nginx・アイコン保存を担当します。
+初回の標準計測確認は[セットアップ報告](docs/setup-report.md)、現行構成は[役割分離の報告](docs/role-split.md)を参照してください。
 
 ベンチはユーザーが`task bench`で実行します。`isucon-bench`でベンチを起動し、計測結果を自動回収します。
 profileは180秒、snapshotは開始60秒後です。
 通常回収では失敗RUNも保存し、分析DBを同期します。`after-bench`は成果物をローカルGit commitします。
 
-`task db-recreate`は3台それぞれの`isupipe`と`isudns`を破棄して公式schemaから作り直します。
+`task db-recreate`はisucon-2の`isupipe`と`isudns`を破棄して公式schemaから作り直します。
 アプリ・PowerDNSの書込みを止め、schema再作成、DNS起動、アプリ起動、`POST /api/initialize`の順に処理します。
-通常の`task deploy-all`はDBを再作成しません。今回のsetupでは再作成のdry-runを確認し、実DBの再作成は実行していません。
+通常の`task deploy-all`はDBを再作成しません。`task deploy-role-split`は再作成・初期化と配布、役割適用、再起動後の確認をまとめて実行します。
 
 ## 必要なローカルツール
 
@@ -54,8 +54,9 @@ task setup-check
 Goの生成binaryと他言語の取得済み生成物を除外しています。schemaのsymlink、
 実サーバーでの設定構文検査は[取得と構文検査の手引き](tools/setup/README.md)を参照してください。
 
-`MYSQL_HOSTS`は3台すべてを含み、配布・起動・標準メトリクスの対象です。
-`MYSQL_HOST=isucon-1`は共通設定の取得元と対話DB接続の既定先です。各アプリのDB接続は各ホストのloopbackを使います。
+`MYSQL_HOSTS`と`MYSQL_HOST`はisucon-2を指し、DB設定配布・標準メトリクス・対話DB接続の対象です。
+アプリとPowerDNSはisucon-2の内部IPへ接続します。`PDNS_HOSTS=isucon-1`、HTTP入口とアプリはisucon-3です。
+`task gen`が接続先を生成し、ホスト固有の認証情報は既存の`env.sh`に保持します。
 
 取得した`webapp/`、`nginx/`、`mysql/`、`etc/`は最初のbaselineとしてcommitします。
 当日マニュアルとAPI仕様は`docs/official/`へ保存してください。
@@ -71,7 +72,8 @@ task deploy-nginx    # 設定上書き・nginx -t成功後にreload
 task deploy-mysql    # MySQL設定配布 + restart
 task deploy-pdns     # PowerDNS設定配布 + restart
 task deploy-sysctl   # 全ホストへ配布 + sysctl -p
-task deploy-all      # 上記を依存順に反映。DB初期化はしない
+task deploy-all      # DB・DNS・アプリ・nginxを依存順に反映。DB初期化はしない
+task deploy-role-split # 役割分離・DB再作成・初期化・再起動後の永続性確認
 task db-recreate     # アプリを止め、DBを破棄・再作成して初期化
 task apply-roles     # 役割変更後だけenable/disableを収束
 task check-roles
@@ -86,15 +88,16 @@ deployctlのdry-runを呼ぶ次のTaskを使います。
 task deploy-app-dry
 task deploy-all-dry
 task db-recreate-dry
+task deploy-role-split-dry
 ```
 
 `tools/contest/deployments.yaml`が汎用graphをincludeし、競技固有の転送・activationを定義します。`Taskfile.yml`が役割と値を持ちます。
 新しいサービスが必要ならdeploymentを追加し、通常の変更に一時的な迂回Taskを増やさないでください。
 
 `db-recreate`は`setup-preflight`でローカルの役割・schema・追加資材とdry-runを確認してから、
-全APP_HOSTSのGoと全MYSQL_HOSTSのPowerDNSを停止します。各ホストの`isupipe`と`isudns`を再作成し、
+全ホストのGoとPowerDNSを停止し、役割外のGo・nginx・MySQLを無効化します。isucon-2の`isupipe`と`isudns`を再作成し、
 `webapp/sql/initdb.d/10_schema.sql`と`webapp/sql/schema/pdns.sql`を適用します。
-PowerDNS、Goを順に起動して各ホストで`POST /api/initialize`を一度ずつ実行し、失敗時は後続へ進みません。
+isucon-1のPowerDNS、isucon-3のGoを順に起動して、isucon-3で`POST /api/initialize`を一度実行し、失敗時は後続へ進みません。
 `RESET_INPUTS`とSQL/DNSのuploadが初期化資材を管理します。`db-recreate-dry`で対象と順序を確認してください。
 
 `task config-check`はnginx/MySQLの正規配布先へ設定を書き込み、構文検査します。reloadは行いませんが、

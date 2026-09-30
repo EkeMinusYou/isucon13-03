@@ -6,6 +6,7 @@ cd $(dirname $0)
 if test -f /home/isucon/env.sh; then
   source /home/isucon/env.sh
 fi
+source /home/isucon/topology.env
 
 ISUCON_SUBDOMAIN_ADDRESS=${ISUCON13_POWERDNS_SUBDOMAIN_ADDRESS:-127.0.0.1}
 
