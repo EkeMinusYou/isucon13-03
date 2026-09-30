@@ -122,6 +122,11 @@ UPDATE reactions SET created_at=id;`); err != nil {
 	if err := currentIcons.load(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+	previousReferences := currentReferences.Load()
+	defer currentReferences.Store(previousReferences)
+	if err := reloadReferences(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	e := echo.New()
 	store := sessions.NewCookieStore(secret)
 	e.Use(session.Middleware(store))

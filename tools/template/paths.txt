@@ -37,6 +37,7 @@ Taskfile.contest.yml
 docs/conversation
 docs/official
 docs/role-split.md
+docs/reference-model.md
 etc
 generated
 mysql

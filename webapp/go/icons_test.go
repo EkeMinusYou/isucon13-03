@@ -112,6 +112,9 @@ func checkIconsMySQL(t *testing.T, db *sqlx.DB, e *echo.Echo, store *sessions.Co
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := reloadReferences(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	for _, name := range []string{"alpha", "beta", "empty"} {
 		var hash string
 		if err := db.Get(&hash, "SELECT icon_hash FROM users WHERE name=?", name); err != nil {
@@ -150,6 +153,9 @@ func checkIconsMySQL(t *testing.T, db *sqlx.DB, e *echo.Echo, store *sessions.Co
 		t.Fatal(err)
 	}
 	if err := currentIcons.reset(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := reloadReferences(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if rec := improvementRequest(t, e, store, http.MethodGet, "/api/user/alpha/icon", "", 1); rec.Header().Get("X-Accel-Redirect") != "/_internal/icons/"+currentIcons.fallbackHash {

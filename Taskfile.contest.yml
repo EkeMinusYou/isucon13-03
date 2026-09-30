@@ -9,6 +9,41 @@
 version: '3'
 
 tasks:
+  check-reference-model-prereqs:
+    desc: 参照モデルの変更前に計測停止と対象OS/Archを確認する
+    preconditions:
+      - sh: test ! -f '{{.RUN_STATE_FILE}}'
+        msg: active benchmark exists
+    deps: [build-measurectl, build-smoke]
+    cmds:
+      - '{{.MEASURECTL_DIR}}/measurectl collect check-clean {{.MEASURECTL_REMOTE}}'
+      - for: { var: APP_HOSTS }
+        cmd: |
+          {{.SSH}} {{.SSH_USER}}@{{.ITEM}} '
+            set -eu
+            test "$(uname -s)" = Linux
+            test "$(uname -m)" = x86_64
+            test "$(curl --fail --silent http://127.0.0.1:6060/debug/profiles/status)" = "{\"cpu\":\"\",\"fgprof\":\"\"}"
+            echo "{{.ITEM}}: Linux/amd64, no active profiles"
+          '
+
+  deploy-reference-model:
+    desc: 参照モデルを配布し、公式初期化・更新反映・アプリ再起動後の復元を確認する
+    preconditions:
+      - sh: test ! -f '{{.RUN_STATE_FILE}}'
+        msg: active benchmark exists
+    cmds:
+      - task: check-reference-model-prereqs
+      - task: gen
+      - task: build
+      - task: db-recreate
+      - task: check-app-deployment
+        vars: { ICON_SMOKE_PHASE: write, REGISTRATION_SMOKE_PHASE: write, REFERENCES_SMOKE_PHASE: write }
+      - task: deploy-app
+      - task: check-app-deployment
+        vars: { ICON_SMOKE_PHASE: read, REGISTRATION_SMOKE_PHASE: read, REFERENCES_SMOKE_PHASE: read }
+      - task: check-role-split
+
   inspect-role-split-prereqs:
     desc: 全ホストのOS/Arch・firewallと移行先DBの接続ユーザーを読み取り確認する
     cmds:
@@ -162,7 +197,7 @@ tasks:
           '
       - '{{.SSH}} {{.SSH_USER}}@{{.ENTRY_HOST}} ''mkdir -p {{.SMOKE_REMOTE_DIR}}'''
       - '{{.RSYNC}} {{.SMOKE_TOOL_DIR}}/smoke {{.SSH_USER}}@{{.ENTRY_HOST}}:{{.SMOKE_REMOTE_DIR}}/smoke'
-      - '{{.SSH}} {{.SSH_USER}}@{{.ENTRY_HOST}} ''{{.SMOKE_REMOTE_DIR}}/smoke {{.SMOKE_ARGS}} -icons-phase "{{.ICON_SMOKE_PHASE | default ""}}" -registration-phase "{{.REGISTRATION_SMOKE_PHASE | default ""}}" -dns-server {{.PDNS_IP}}:53 -dns-address {{.DNS_RECORD_ADDRESS}}'''
+      - '{{.SSH}} {{.SSH_USER}}@{{.ENTRY_HOST}} ''{{.SMOKE_REMOTE_DIR}}/smoke {{.SMOKE_ARGS}} -icons-phase "{{.ICON_SMOKE_PHASE | default ""}}" -registration-phase "{{.REGISTRATION_SMOKE_PHASE | default ""}}" -references-phase "{{.REFERENCES_SMOKE_PHASE | default ""}}" -dns-server {{.PDNS_IP}}:53 -dns-address {{.DNS_RECORD_ADDRESS}}'''
 
   setup-contest-assets:
     desc: 競技固有の依存サービス資材を取得

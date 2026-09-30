@@ -31,18 +31,18 @@ func reloadTags(ctx context.Context) error {
 	return nil
 }
 
-// A builder belongs to one transaction, so mutable data never outlives its snapshot.
+// A builder reuses reference values within one response; timelines remain in MySQL.
 type responseBuilder struct {
 	ctx         context.Context
-	tx          *sqlx.Tx
+	refs        *referenceStore
 	users       map[int64]User
 	livestreams map[int64]Livestream
 	tags        *tagCatalog
 }
 
-func newResponseBuilder(ctx context.Context, tx *sqlx.Tx) *responseBuilder {
+func newResponseBuilder(ctx context.Context) *responseBuilder {
 	return &responseBuilder{
-		ctx: ctx, tx: tx, users: make(map[int64]User),
+		ctx: ctx, refs: currentReferences.Load(), users: make(map[int64]User),
 		livestreams: make(map[int64]Livestream), tags: currentTags.Load(),
 	}
 }
@@ -60,93 +60,47 @@ func uniqueIDs(ids []int64) []int64 {
 }
 
 func (b *responseBuilder) loadUsers(ids []int64) error {
-	missing := make([]int64, 0, len(ids))
+	if b.refs == nil {
+		return fmt.Errorf("reference store is not loaded")
+	}
 	for _, id := range uniqueIDs(ids) {
-		if _, ok := b.users[id]; !ok {
-			missing = append(missing, id)
-		}
-	}
-	if len(missing) == 0 {
-		return nil
-	}
-	query, args, err := sqlx.In(`
-	SELECT u.id, u.name, u.display_name, u.description,
-	       t.id AS theme_id, t.dark_mode, u.icon_hash
-	FROM users u
-	INNER JOIN themes t ON t.user_id = u.id
-	WHERE u.id IN (?)
-	ORDER BY u.id, t.id`, missing)
-	if err != nil {
-		return err
-	}
-	var rows []struct {
-		ID          int64  `db:"id"`
-		Name        string `db:"name"`
-		DisplayName string `db:"display_name"`
-		Description string `db:"description"`
-		ThemeID     int64  `db:"theme_id"`
-		DarkMode    bool   `db:"dark_mode"`
-		IconHash    string `db:"icon_hash"`
-	}
-	if err := b.tx.SelectContext(b.ctx, &rows, query, args...); err != nil {
-		return err
-	}
-	for _, row := range rows {
-		if _, ok := b.users[row.ID]; ok {
+		if _, ok := b.users[id]; ok {
 			continue
 		}
-		hash := row.IconHash
-		if hash == "" {
-			hash = currentIcons.fallbackHash
+		user, err := b.refs.user(b.ctx, id)
+		if err != nil {
+			return err
 		}
-		b.users[row.ID] = User{
-			ID: row.ID, Name: row.Name, DisplayName: row.DisplayName, Description: row.Description,
-			Theme: Theme{ID: row.ThemeID, DarkMode: row.DarkMode}, IconHash: hash,
-		}
-	}
-	for _, id := range missing {
-		if _, ok := b.users[id]; !ok {
-			return sql.ErrNoRows
-		}
+		b.users[id] = user
 	}
 	return nil
 }
 
 func (b *responseBuilder) loadLivestreams(models []*LivestreamModel, userIDs []int64) error {
-	ids := make([]int64, 0, len(models))
 	for _, model := range models {
-		ids = append(ids, model.ID)
 		userIDs = append(userIDs, model.UserID)
 	}
 	if err := b.loadUsers(userIDs); err != nil {
 		return err
 	}
-	if len(ids) == 0 {
+	if len(models) == 0 {
 		return nil
 	}
 	if b.tags == nil {
 		return fmt.Errorf("tag catalog is not loaded")
 	}
-	query, args, err := sqlx.In("SELECT * FROM livestream_tags WHERE livestream_id IN (?) ORDER BY livestream_id, tag_id, id", uniqueIDs(ids))
-	if err != nil {
-		return err
-	}
-	var links []LivestreamTagModel
-	if err := b.tx.SelectContext(b.ctx, &links, query, args...); err != nil {
-		return err
-	}
-	byStream := make(map[int64][]Tag, len(models))
-	for _, link := range links {
-		tag, ok := b.tags.byID[link.TagID]
-		if !ok {
-			return sql.ErrNoRows
-		}
-		byStream[link.LivestreamID] = append(byStream[link.LivestreamID], tag)
-	}
 	for _, model := range models {
-		tags := byStream[model.ID]
-		if tags == nil {
-			tags = []Tag{}
+		ref, err := b.refs.livestream(b.ctx, model.ID)
+		if err != nil {
+			return err
+		}
+		tags := make([]Tag, 0, len(ref.tagIDs))
+		for _, id := range ref.tagIDs {
+			tag, ok := b.tags.byID[id]
+			if !ok {
+				return sql.ErrNoRows
+			}
+			tags = append(tags, tag)
 		}
 		b.livestreams[model.ID] = Livestream{
 			ID: model.ID, Owner: b.users[model.UserID], Title: model.Title, Description: model.Description,
@@ -162,22 +116,22 @@ func (b *responseBuilder) loadLivestreamIDs(ids, userIDs []int64) error {
 	if len(ids) == 0 {
 		return b.loadUsers(userIDs)
 	}
-	query, args, err := sqlx.In("SELECT * FROM livestreams WHERE id IN (?)", ids)
-	if err != nil {
-		return err
+	if b.refs == nil {
+		return fmt.Errorf("reference store is not loaded")
 	}
-	var models []*LivestreamModel
-	if err := b.tx.SelectContext(b.ctx, &models, query, args...); err != nil {
-		return err
-	}
-	if len(models) != len(ids) {
-		return sql.ErrNoRows
+	models := make([]*LivestreamModel, 0, len(ids))
+	for _, id := range ids {
+		ref, err := b.refs.livestream(b.ctx, id)
+		if err != nil {
+			return err
+		}
+		models = append(models, &ref.model)
 	}
 	return b.loadLivestreams(models, userIDs)
 }
 
 func fillLivestreamResponses(ctx context.Context, tx *sqlx.Tx, models []*LivestreamModel) ([]Livestream, error) {
-	b := newResponseBuilder(ctx, tx)
+	b := newResponseBuilder(ctx)
 	if err := b.loadLivestreams(models, nil); err != nil {
 		return nil, err
 	}
@@ -189,7 +143,7 @@ func fillLivestreamResponses(ctx context.Context, tx *sqlx.Tx, models []*Livestr
 }
 
 func fillLivecommentResponses(ctx context.Context, tx *sqlx.Tx, models []LivecommentModel) ([]Livecomment, error) {
-	b := newResponseBuilder(ctx, tx)
+	b := newResponseBuilder(ctx)
 	ids, userIDs := make([]int64, len(models)), make([]int64, len(models))
 	for i, model := range models {
 		ids[i], userIDs[i] = model.LivestreamID, model.UserID
@@ -212,7 +166,7 @@ func (b *responseBuilder) livecomment(model LivecommentModel) Livecomment {
 }
 
 func fillReactionResponses(ctx context.Context, tx *sqlx.Tx, models []ReactionModel) ([]Reaction, error) {
-	b := newResponseBuilder(ctx, tx)
+	b := newResponseBuilder(ctx)
 	ids, userIDs := make([]int64, len(models)), make([]int64, len(models))
 	for i, model := range models {
 		ids[i], userIDs[i] = model.LivestreamID, model.UserID
@@ -256,7 +210,7 @@ func fillLivecommentReportResponses(ctx context.Context, tx *sqlx.Tx, models []*
 		ids = append(ids, comment.LivestreamID)
 		userIDs = append(userIDs, comment.UserID)
 	}
-	b := newResponseBuilder(ctx, tx)
+	b := newResponseBuilder(ctx)
 	if err := b.loadLivestreamIDs(ids, userIDs); err != nil {
 		return nil, err
 	}

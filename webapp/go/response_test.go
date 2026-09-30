@@ -21,6 +21,9 @@ import (
 
 func checkResponseBatching(t *testing.T, db *sqlx.DB, e *echo.Echo, store *sessions.CookieStore) {
 	ctx := context.Background()
+	t.Run("commit_publication", func(t *testing.T) {
+		checkReferenceCommits(t, db)
+	})
 	fallback, err := os.ReadFile(fallbackImage)
 	if err != nil {
 		t.Fatal(err)
@@ -149,8 +152,8 @@ func checkResponseBatching(t *testing.T, db *sqlx.DB, e *echo.Echo, store *sessi
 		large[i] = model
 	}
 	smallCount, largeCount := queryCount([]LivecommentModel{model}), queryCount(large)
-	if smallCount != largeCount {
-		t.Fatalf("statement count grows with rows: one=%d hundred=%d", smallCount, largeCount)
+	if smallCount != 1 || largeCount != 1 {
+		t.Fatalf("reference reads must execute no SQL: one=%d hundred=%d (includes status read)", smallCount, largeCount)
 	}
 	t.Logf("timeline SQL count is constant: one=%d hundred=%d (includes status read)", smallCount, largeCount)
 	// An upload must be visible in the next nested response.
@@ -188,6 +191,65 @@ func checkResponseBatching(t *testing.T, db *sqlx.DB, e *echo.Echo, store *sessi
 	read("/api/tag", &tags)
 	if !reflect.DeepEqual(tags.Tags, []Tag{{ID: 1, Name: "reloaded-tag"}, {ID: 2, Name: "tag-b"}}) {
 		t.Fatalf("reloaded tags: %+v", tags)
+	}
+}
+
+func checkReferenceCommits(t *testing.T, db *sqlx.DB) {
+	ctx := context.Background()
+	refs := currentReferences.Load()
+	insert := func(id int64) *sqlx.Tx {
+		t.Helper()
+		tx, err := db.BeginTxx(ctx, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tx.Exec("INSERT INTO users (id,name,display_name,description,password) VALUES (?,?,?,?,'')", id, fmt.Sprintf("cached-%d", id), "Cached user", "Committed metadata"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tx.Exec("INSERT INTO themes (id,user_id,dark_mode) VALUES (?,?,TRUE)", id, id); err != nil {
+			t.Fatal(err)
+		}
+		return tx
+	}
+	const committedID, rolledBackID int64 = 100, 101
+	user := User{ID: committedID, Name: "cached-100", DisplayName: "Cached user", Description: "Committed metadata", Theme: Theme{ID: committedID, DarkMode: true}, IconHash: currentIcons.fallbackHash}
+	tx := insert(committedID)
+	defer tx.Rollback()
+	if _, err := refs.user(ctx, committedID); err == nil {
+		t.Fatal("an uncommitted user must not be visible")
+	}
+	if err := refs.commitUser(tx, user); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := refs.user(ctx, committedID); err != nil || !reflect.DeepEqual(got, user) {
+		t.Fatalf("committed user: got=%+v err=%v", got, err)
+	}
+	tx = insert(rolledBackID)
+	if err := tx.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+	failed := user
+	failed.ID, failed.Name = rolledBackID, "cached-101"
+	if err := refs.commitUser(tx, failed); err == nil {
+		t.Fatal("a rolled-back transaction must not publish a user")
+	}
+	if _, err := refs.user(ctx, rolledBackID); err == nil {
+		t.Fatal("failed commit left a cached user")
+	}
+	if err := reloadReferences(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := currentReferences.Load().user(ctx, committedID); err != nil || !reflect.DeepEqual(got, user) {
+		t.Fatalf("user restored from MySQL: got=%+v err=%v", got, err)
+	}
+	if _, err := db.Exec("DELETE FROM themes WHERE user_id=?; DELETE FROM users WHERE id=?", committedID, committedID); err != nil {
+		t.Fatal(err)
+	}
+	if err := reloadReferences(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := currentReferences.Load().user(ctx, committedID); err == nil {
+		t.Fatal("initialization must replace the previous user catalog")
 	}
 }
 
@@ -240,6 +302,7 @@ func checkReservationAtomicity(t *testing.T, db *sqlx.DB, e *echo.Echo, store *s
 	}
 	close(ready)
 	statuses := map[int]int{}
+	var reserved Livestream
 	for range requests {
 		select {
 		case rec := <-results:
@@ -249,6 +312,7 @@ func checkReservationAtomicity(t *testing.T, db *sqlx.DB, e *echo.Echo, store *s
 				if err := json.Unmarshal(rec.Body.Bytes(), &stream); err != nil || stream.ID == 0 || len(stream.Tags) != 2 {
 					t.Fatalf("reserved stream response: body=%s err=%v", rec.Body.String(), err)
 				}
+				reserved = stream
 			}
 		case <-time.After(5 * time.Second):
 			t.Fatal("concurrent reservation timed out")
@@ -263,5 +327,17 @@ func checkReservationAtomicity(t *testing.T, db *sqlx.DB, e *echo.Echo, store *s
 	}
 	if !reflect.DeepEqual(slots, []int64{0, 0, 2, 7}) {
 		t.Fatalf("slot boundaries / rollback / overbooking: %v", slots)
+	}
+	for _, reload := range []bool{false, true} {
+		if reload {
+			if err := reloadReferences(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+		}
+		rec := improvementRequest(t, e, store, http.MethodGet, fmt.Sprintf("/api/livestream/%d", reserved.ID), "", 1)
+		var restored Livestream
+		if err := json.Unmarshal(rec.Body.Bytes(), &restored); err != nil || rec.Code != http.StatusOK || !reflect.DeepEqual(restored, reserved) {
+			t.Fatalf("reserved metadata reload=%v status=%d body=%s err=%v", reload, rec.Code, rec.Body.String(), err)
+		}
 	}
 }

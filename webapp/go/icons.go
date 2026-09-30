@@ -147,13 +147,14 @@ func (s *iconStore) load(ctx context.Context) error {
 	return nil
 }
 
-func (s *iconStore) addUser(id int64, name, hash string) {
+func (s *iconStore) addUser(id int64, name, hash string) *iconEntry {
 	entry := &iconEntry{id: id}
 	entry.hash.Store(hash)
 	s.mu.Lock()
 	s.byName[strings.TrimRight(name, " ")] = entry
 	s.byID[id] = entry
 	s.mu.Unlock()
+	return entry
 }
 
 // The caller holds lifecycle exclusively after the official database initialization.

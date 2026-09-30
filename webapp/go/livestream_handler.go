@@ -155,13 +155,12 @@ func reserveLivestreamHandler(c echo.Context) error {
 		}
 	}
 
+	if err := currentReferences.Load().commitLivestream(ctx, tx, *livestreamModel, req.Tags); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to commit: "+err.Error())
+	}
 	livestream, err := fillLivestreamResponse(ctx, tx, *livestreamModel)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fill livestream: "+err.Error())
-	}
-
-	if err := tx.Commit(); err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to commit: "+err.Error())
 	}
 
 	return c.JSON(http.StatusCreated, livestream)
@@ -199,17 +198,13 @@ func searchLivestreamsHandler(c echo.Context) error {
 			for i, link := range keyTaggedLivestreams {
 				ids[i] = link.LivestreamID
 			}
-			query, args, err := sqlx.In("SELECT * FROM livestreams WHERE id IN (?)", uniqueIDs(ids))
-			if err != nil {
-				return echo.NewHTTPError(http.StatusInternalServerError, "failed to construct IN query: "+err.Error())
-			}
-			var found []*LivestreamModel
-			if err := tx.SelectContext(ctx, &found, query, args...); err != nil {
-				return echo.NewHTTPError(http.StatusInternalServerError, "failed to get livestreams: "+err.Error())
-			}
-			byID := make(map[int64]*LivestreamModel, len(found))
-			for _, model := range found {
-				byID[model.ID] = model
+			byID := make(map[int64]*LivestreamModel, len(ids))
+			for _, id := range uniqueIDs(ids) {
+				ref, err := currentReferences.Load().livestream(ctx, id)
+				if err != nil {
+					return echo.NewHTTPError(http.StatusInternalServerError, "failed to get livestreams: "+err.Error())
+				}
+				byID[id] = &ref.model
 			}
 			for _, link := range keyTaggedLivestreams {
 				model, ok := byID[link.LivestreamID]
@@ -294,8 +289,8 @@ func getUserLivestreamsHandler(c echo.Context) error {
 	}
 	defer tx.Rollback()
 
-	var user UserModel
-	if err := tx.GetContext(ctx, &user, "SELECT * FROM users WHERE name = ?", username); err != nil {
+	user, err := currentReferences.Load().namedUser(ctx, username)
+	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return echo.NewHTTPError(http.StatusNotFound, "user not found")
 		} else {
@@ -406,14 +401,7 @@ func getLivestreamHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "livestream_id in path must be integer")
 	}
 
-	tx, err := dbConn.BeginTxx(ctx, nil)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to begin transaction: "+err.Error())
-	}
-	defer tx.Rollback()
-
-	livestreamModel := LivestreamModel{}
-	err = tx.GetContext(ctx, &livestreamModel, "SELECT * FROM livestreams WHERE id = ?", livestreamID)
+	ref, err := currentReferences.Load().livestream(ctx, int64(livestreamID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return echo.NewHTTPError(http.StatusNotFound, "not found livestream that has the given id")
 	}
@@ -421,13 +409,9 @@ func getLivestreamHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get livestream: "+err.Error())
 	}
 
-	livestream, err := fillLivestreamResponse(ctx, tx, livestreamModel)
+	livestream, err := fillLivestreamResponse(ctx, nil, ref.model)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fill livestream: "+err.Error())
-	}
-
-	if err := tx.Commit(); err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to commit: "+err.Error())
 	}
 
 	return c.JSON(http.StatusOK, livestream)
@@ -451,8 +435,8 @@ func getLivecommentReportsHandler(c echo.Context) error {
 	}
 	defer tx.Rollback()
 
-	var livestreamModel LivestreamModel
-	if err := tx.GetContext(ctx, &livestreamModel, "SELECT * FROM livestreams WHERE id = ?", livestreamID); err != nil {
+	ref, err := currentReferences.Load().livestream(ctx, int64(livestreamID))
+	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get livestream: "+err.Error())
 	}
 
@@ -461,7 +445,7 @@ func getLivecommentReportsHandler(c echo.Context) error {
 	// existence already check
 	userID := sess.Values[defaultUserIDKey].(int64)
 
-	if livestreamModel.UserID != userID {
+	if ref.model.UserID != userID {
 		return echo.NewHTTPError(http.StatusForbidden, "can't get other streamer's livecomment reports")
 	}
 

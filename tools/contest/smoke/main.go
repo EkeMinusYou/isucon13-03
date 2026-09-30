@@ -25,6 +25,7 @@ func main() {
 	targets := flag.String("ingress", "127.0.0.1:443", "comma separated ingress addresses")
 	iconsPhase := flag.String("icons-phase", "", "write or read to check durable icon updates")
 	registrationPhase := flag.String("registration-phase", "", "write or read to check durable user and DNS registration")
+	referencesPhase := flag.String("references-phase", "", "write or read to check reference publication and reload")
 	dnsServer := flag.String("dns-server", "", "authoritative DNS server address")
 	dnsAddress := flag.String("dns-address", "", "expected public HTTP ingress address")
 	flag.Parse()
@@ -33,6 +34,9 @@ func main() {
 	}
 	if *registrationPhase != "" && *registrationPhase != "write" && *registrationPhase != "read" {
 		log.Fatal("registration-phase must be write or read")
+	}
+	if *referencesPhase != "" && (*referencesPhase != "write" && *referencesPhase != "read" || *registrationPhase == "") {
+		log.Fatal("references-phase requires write or read and registration-phase")
 	}
 	if *registrationPhase != "" && (*dnsServer == "" || net.ParseIP(*dnsAddress) == nil) {
 		log.Fatal("registration checks require dns-server and dns-address")
@@ -103,8 +107,102 @@ func main() {
 			}
 			fmt.Printf("%s: user/DNS registration %s, login and subdomain HTTPS passed\n", addr, *registrationPhase)
 		}
+		if *referencesPhase != "" {
+			if err := checkReferenceModels(client, *referencesPhase == "write"); err != nil {
+				log.Fatal(err)
+			}
+			fmt.Printf("%s: reference %s, reservation, duplicate tags and nested comment metadata passed\n", addr, *referencesPhase)
+		}
 		transport.CloseIdleConnections()
 	}
+}
+
+type smokeReferenceUser struct {
+	Name     string `json:"name"`
+	IconHash string `json:"icon_hash"`
+	Theme    struct {
+		DarkMode bool `json:"dark_mode"`
+	} `json:"theme"`
+}
+
+type smokeReferenceStream struct {
+	ID    int64              `json:"id"`
+	Title string             `json:"title"`
+	Owner smokeReferenceUser `json:"owner"`
+	Tags  []struct {
+		ID int64 `json:"id"`
+	} `json:"tags"`
+}
+
+func checkReferenceModels(client *http.Client, write bool) error {
+	const title = "Reference model smoke"
+	if write {
+		data, err := request(client, http.MethodGet, "/api/tag", "")
+		if err != nil {
+			return err
+		}
+		var catalog struct {
+			Tags []struct {
+				ID int64 `json:"id"`
+			} `json:"tags"`
+		}
+		if err := json.Unmarshal(data, &catalog); err != nil || len(catalog.Tags) < 2 {
+			return fmt.Errorf("reference tags: invalid catalog: %v", err)
+		}
+		body, _ := json.Marshal(struct {
+			Title   string  `json:"title"`
+			Tags    []int64 `json:"tags"`
+			StartAt int64   `json:"start_at"`
+			EndAt   int64   `json:"end_at"`
+		}{title, []int64{catalog.Tags[1].ID, catalog.Tags[0].ID, catalog.Tags[1].ID}, 1700874000, 1700877600})
+		res, _, err := requestResponse(client, http.MethodPost, "/api/livestream/reservation", string(body), nil)
+		if err != nil || res.StatusCode != http.StatusCreated {
+			return fmt.Errorf("reference reservation failed: %v", err)
+		}
+	}
+	data, err := request(client, http.MethodGet, "/api/user/role-split-smoke/livestream", "")
+	if err != nil {
+		return err
+	}
+	var streams []smokeReferenceStream
+	if err := json.Unmarshal(data, &streams); err != nil {
+		return err
+	}
+	var stream smokeReferenceStream
+	for _, entry := range streams {
+		if entry.Title == title {
+			stream = entry
+		}
+	}
+	if stream.ID == 0 || stream.Owner.Name != "role-split-smoke" || !stream.Owner.Theme.DarkMode || len(stream.Owner.IconHash) != 64 || len(stream.Tags) != 3 || stream.Tags[0].ID > stream.Tags[1].ID || stream.Tags[1].ID != stream.Tags[2].ID {
+		return fmt.Errorf("reference stream was not published/restored with ordered duplicate tags")
+	}
+	path := fmt.Sprintf("/api/livestream/%d/livecomment", stream.ID)
+	if write {
+		res, _, err := requestResponse(client, http.MethodPost, path, `{"comment":"Reference smoke comment","tip":123}`, nil)
+		if err != nil || res.StatusCode != http.StatusCreated {
+			return fmt.Errorf("reference comment failed: %v", err)
+		}
+	}
+	data, err = request(client, http.MethodGet, path, "")
+	if err != nil {
+		return err
+	}
+	var comments []struct {
+		Comment    string               `json:"comment"`
+		Tip        int64                `json:"tip"`
+		User       smokeReferenceUser   `json:"user"`
+		Livestream smokeReferenceStream `json:"livestream"`
+	}
+	if err := json.Unmarshal(data, &comments); err != nil || len(comments) != 1 || comments[0].Comment != "Reference smoke comment" || comments[0].Tip != 123 || comments[0].User != stream.Owner {
+		return fmt.Errorf("reference comment metadata differs from committed user: %v", err)
+	}
+	want, _ := json.Marshal(stream)
+	got, _ := json.Marshal(comments[0].Livestream)
+	if !bytes.Equal(want, got) {
+		return fmt.Errorf("reference comment has stale livestream metadata")
+	}
+	return nil
 }
 
 func checkRegistration(client *http.Client, dnsServer, dnsAddress string, write bool) error {
@@ -120,6 +218,20 @@ func checkRegistration(client *http.Client, dnsServer, dnsAddress string, write 
 	}
 	if _, err := request(client, http.MethodPost, "/api/login", `{"username":"role-split-smoke","password":"topology-smoke-password"}`); err != nil {
 		return err
+	}
+	data, err := request(client, http.MethodGet, "/api/user/me", "")
+	if err != nil {
+		return err
+	}
+	var user struct {
+		Name     string `json:"name"`
+		IconHash string `json:"icon_hash"`
+		Theme    struct {
+			DarkMode bool `json:"dark_mode"`
+		} `json:"theme"`
+	}
+	if err := json.Unmarshal(data, &user); err != nil || user.Name != username || !user.Theme.DarkMode || len(user.IconHash) != 64 {
+		return fmt.Errorf("registered user reference was not published or restored: %v", err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()

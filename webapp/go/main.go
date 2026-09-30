@@ -124,6 +124,9 @@ func initializeHandler(c echo.Context) error {
 	if err := currentIcons.reset(c.Request().Context()); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to reset icons: "+err.Error())
 	}
+	if err := reloadReferences(c.Request().Context()); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to load references: "+err.Error())
+	}
 
 	c.Request().Header.Add("Content-Type", "application/json;charset=utf-8")
 	return c.JSON(http.StatusOK, InitializeResponse{
@@ -216,6 +219,9 @@ func main() {
 	}
 	if err := reloadTags(context.Background()); err != nil {
 		e.Logger.Fatalf("failed to load tags: %v", err)
+	}
+	if err := reloadReferences(context.Background()); err != nil {
+		e.Logger.Fatalf("failed to load references: %v", err)
 	}
 	if err := startProfileServer(180); err != nil {
 		e.Logger.Fatalf("failed to start measurement listener: %v", err)
