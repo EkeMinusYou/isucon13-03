@@ -2,10 +2,8 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
 	"fmt"
-	"os"
 	"sync/atomic"
 
 	"github.com/jmoiron/sqlx"
@@ -73,47 +71,37 @@ func (b *responseBuilder) loadUsers(ids []int64) error {
 	}
 	query, args, err := sqlx.In(`
 	SELECT u.id, u.name, u.display_name, u.description,
-	       t.id AS theme_id, t.dark_mode, i.id AS icon_id, i.image
+	       t.id AS theme_id, t.dark_mode, u.icon_hash
 	FROM users u
 	INNER JOIN themes t ON t.user_id = u.id
-	LEFT JOIN icons i ON i.user_id = u.id
 	WHERE u.id IN (?)
-	ORDER BY u.id, t.id, i.id`, missing)
+	ORDER BY u.id, t.id`, missing)
 	if err != nil {
 		return err
 	}
 	var rows []struct {
-		ID          int64         `db:"id"`
-		Name        string        `db:"name"`
-		DisplayName string        `db:"display_name"`
-		Description string        `db:"description"`
-		ThemeID     int64         `db:"theme_id"`
-		DarkMode    bool          `db:"dark_mode"`
-		IconID      sql.NullInt64 `db:"icon_id"`
-		Image       []byte        `db:"image"`
+		ID          int64  `db:"id"`
+		Name        string `db:"name"`
+		DisplayName string `db:"display_name"`
+		Description string `db:"description"`
+		ThemeID     int64  `db:"theme_id"`
+		DarkMode    bool   `db:"dark_mode"`
+		IconHash    string `db:"icon_hash"`
 	}
 	if err := b.tx.SelectContext(b.ctx, &rows, query, args...); err != nil {
 		return err
 	}
-	var fallback []byte
 	for _, row := range rows {
 		if _, ok := b.users[row.ID]; ok {
 			continue
 		}
-		image := row.Image
-		if !row.IconID.Valid {
-			if fallback == nil {
-				fallback, err = os.ReadFile(fallbackImage)
-				if err != nil {
-					return err
-				}
-			}
-			image = fallback
+		hash := row.IconHash
+		if hash == "" {
+			hash = currentIcons.fallbackHash
 		}
-		hash := sha256.Sum256(image)
 		b.users[row.ID] = User{
 			ID: row.ID, Name: row.Name, DisplayName: row.DisplayName, Description: row.Description,
-			Theme: Theme{ID: row.ThemeID, DarkMode: row.DarkMode}, IconHash: fmt.Sprintf("%x", hash),
+			Theme: Theme{ID: row.ThemeID, DarkMode: row.DarkMode}, IconHash: hash,
 		}
 	}
 	for _, id := range missing {

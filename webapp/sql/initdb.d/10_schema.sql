@@ -7,6 +7,7 @@ CREATE TABLE `users` (
   `display_name` VARCHAR(255) NOT NULL,
   `password` VARCHAR(255) NOT NULL,
   `description` TEXT NOT NULL,
+  `icon_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT '',
   UNIQUE `uniq_user_name` (`name`)
 ) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
 
@@ -14,8 +15,7 @@ CREATE TABLE `users` (
 CREATE TABLE `icons` (
   `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   `user_id` BIGINT NOT NULL,
-  `image` LONGBLOB NOT NULL,
-  KEY `idx_icons_user` (`user_id`)
+  `hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL
 ) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
 
 -- ユーザごとのカスタムテーマ

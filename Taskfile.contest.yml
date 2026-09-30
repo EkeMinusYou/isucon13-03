@@ -9,8 +9,38 @@
 version: '3'
 
 tasks:
+  check-icon-unit:
+    desc: 永続アイコン・条件付きGETのローカルrace testを実行する
+    dir: '{{.APP_DIR}}'
+    cmds: [go test -race ./...]
+
+  deploy-icons:
+    desc: 永続アイコン構成を3台へ配布し、DB再作成・初期化・nginx reload・再起動後の画像確認を行う
+    preconditions:
+      - sh: test ! -f '{{.RUN_STATE_FILE}}'
+        msg: active benchmark exists
+    deps: [build-measurectl]
+    cmds:
+      - '{{.MEASURECTL_DIR}}/measurectl collect check-clean {{.MEASURECTL_REMOTE}}'
+      - task: gen
+      - task: build
+      - task: db-recreate
+      - task: deploy-nginx
+      - task: check-icons-deployment
+
+  check-icons-deployment:
+    desc: nginx経由の画像・条件付きGET・更新反映・アプリ再起動後の永続性を3台で確認する
+    preconditions:
+      - sh: test ! -f '{{.RUN_STATE_FILE}}'
+        msg: active benchmark exists
+    cmds:
+      - task: check-app-deployment
+        vars: { ICON_SMOKE_PHASE: write }
+      - task: deploy-app
+      - '{{.SSH}} {{.SSH_USER}}@{{.ENTRY_HOST}} ''{{.SMOKE_REMOTE_DIR}}/smoke {{.SMOKE_ARGS}} -icons-phase read'''
+
   check-app-improvements:
-    desc: 応答・同時予約・統計・モデレーションを実MySQLの一時検証DBで確認する（競技DBは変更しない）
+    desc: アイコン・応答・同時予約・統計・モデレーションを実MySQLの一時検証DBで確認する（競技DBは変更しない）
     preconditions:
       - sh: test ! -f '{{.RUN_STATE_FILE}}'
         msg: active benchmark exists
@@ -54,14 +84,18 @@ tasks:
             actual=$(sudo sha256sum "/proc/$pid/exe" | cut -d " " -f 1)
             test "$actual" = "{{.BINARY_SHA256}}"
             indexes=$(sudo mysql -N -e "SELECT COUNT(DISTINCT TABLE_NAME, INDEX_NAME) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=\"{{.DB_NAME}}\" AND INDEX_NAME LIKE \"idx_%\"")
-            test "$indexes" -eq 11
-            echo "{{.ITEM}}: running binary matches; all 11 indexes exist"
+            test "$indexes" -eq 10
+            columns=$(sudo mysql -N -e "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=\"{{.DB_NAME}}\" AND ((TABLE_NAME=\"users\" AND COLUMN_NAME=\"icon_hash\") OR (TABLE_NAME=\"icons\" AND COLUMN_NAME=\"hash\"))")
+            test "$columns" -eq 2
+            blobs=$(sudo mysql -N -e "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=\"{{.DB_NAME}}\" AND TABLE_NAME=\"icons\" AND DATA_TYPE LIKE \"%blob\"")
+            test "$blobs" -eq 0
+            echo "{{.ITEM}}: running binary matches; all 10 indexes and icon metadata columns exist; no icon BLOB"
             sudo mysql -t {{.DB_NAME}} -e "EXPLAIN SELECT * FROM livestream_tags WHERE livestream_id = 1"
             sudo mysql -t {{.DB_NAME}} -e "EXPLAIN SELECT * FROM reservation_slots WHERE start_at >= 1700874000 AND start_at < 1700877600 AND end_at <= 1700877600 FOR UPDATE"
           '
       - '{{.SSH}} {{.SSH_USER}}@{{.ENTRY_HOST}} ''mkdir -p {{.SMOKE_REMOTE_DIR}}'''
       - '{{.RSYNC}} {{.SMOKE_TOOL_DIR}}/smoke {{.SSH_USER}}@{{.ENTRY_HOST}}:{{.SMOKE_REMOTE_DIR}}/smoke'
-      - '{{.SSH}} {{.SSH_USER}}@{{.ENTRY_HOST}} ''{{.SMOKE_REMOTE_DIR}}/smoke {{.SMOKE_ARGS}}'''
+      - '{{.SSH}} {{.SSH_USER}}@{{.ENTRY_HOST}} ''{{.SMOKE_REMOTE_DIR}}/smoke {{.SMOKE_ARGS}} -icons-phase "{{.ICON_SMOKE_PHASE | default ""}}"'''
 
   setup-contest-assets:
     desc: 競技固有の依存サービス資材を取得

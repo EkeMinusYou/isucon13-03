@@ -153,11 +153,17 @@ func checkResponseBatching(t *testing.T, db *sqlx.DB, e *echo.Echo, store *sessi
 		t.Fatalf("statement count grows with rows: one=%d hundred=%d", smallCount, largeCount)
 	}
 	t.Logf("timeline SQL count is constant: one=%d hundred=%d (includes status read)", smallCount, largeCount)
-	// An update must be visible in the next request, without a process-wide user cache.
-	if _, err := db.Exec("UPDATE icons SET image='updated-icon' WHERE user_id=1"); err != nil {
-		t.Fatal(err)
+	// An upload must be visible in the next nested response.
+	post := func(image string) {
+		t.Helper()
+		body, _ := json.Marshal(PostIconRequest{Image: []byte(image)})
+		rec := improvementRequest(t, e, store, http.MethodPost, "/api/icon", string(body), 1)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("upload icon: status=%d body=%s", rec.Code, rec.Body.String())
+		}
 	}
-	defer db.Exec("UPDATE icons SET image='first-icon' WHERE user_id=1")
+	post("updated-icon")
+	defer post("first-icon")
 	read("/api/livestream/1", &stream)
 	hash := sha256.Sum256([]byte("updated-icon"))
 	if stream.Owner.IconHash != fmt.Sprintf("%x", hash) {

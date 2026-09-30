@@ -111,6 +111,8 @@ func connectDB(logger echo.Logger) (*sqlx.DB, error) {
 }
 
 func initializeHandler(c echo.Context) error {
+	currentIcons.lifecycle.Lock()
+	defer currentIcons.lifecycle.Unlock()
 	if out, err := exec.Command("../sql/init.sh").CombinedOutput(); err != nil {
 		c.Logger().Warnf("init.sh failed with err=%s", string(out))
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to initialize: "+err.Error())
@@ -118,6 +120,9 @@ func initializeHandler(c echo.Context) error {
 
 	if err := reloadTags(c.Request().Context()); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to load tags: "+err.Error())
+	}
+	if err := currentIcons.reset(c.Request().Context()); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to reset icons: "+err.Error())
 	}
 
 	c.Request().Header.Add("Content-Type", "application/json;charset=utf-8")
@@ -201,6 +206,14 @@ func main() {
 	}
 	defer conn.Close()
 	dbConn = conn
+	iconDir := os.Getenv("ISUCON_ICON_DIR")
+	if iconDir == "" {
+		iconDir = "/var/lib/isupipe/icons"
+	}
+	currentIcons, err = newIconStore(context.Background(), iconDir)
+	if err != nil {
+		e.Logger.Fatalf("failed to load icons: %v", err)
+	}
 	if err := reloadTags(context.Background()); err != nil {
 		e.Logger.Fatalf("failed to load tags: %v", err)
 	}

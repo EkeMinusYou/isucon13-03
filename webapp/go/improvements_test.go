@@ -95,7 +95,6 @@ INSERT INTO livecomment_reports (user_id, livestream_id, livecomment_id, created
 	if _, err := db.Exec(`
 INSERT INTO themes (id, user_id, dark_mode) VALUES
  (1,1,TRUE), (2,2,FALSE), (3,3,FALSE), (4,4,FALSE), (5,5,FALSE);
-INSERT INTO icons (user_id,image) VALUES (1,'first-icon'), (2,X'');
 INSERT INTO tags (id,name) VALUES (1,'tag-a'), (2,'tag-b');
 INSERT INTO livestream_tags (livestream_id,tag_id) VALUES (1,2), (1,1), (2,2), (1,2);
 UPDATE livecomments SET created_at=id;
@@ -103,6 +102,24 @@ UPDATE reactions SET created_at=id;`); err != nil {
 		t.Fatal(err)
 	}
 	if err := reloadTags(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	previousIcons := currentIcons
+	defer func() { currentIcons = previousIcons }()
+	currentIcons, err = newIconStore(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for id, image := range map[int64][]byte{1: []byte("first-icon"), 2: {}} {
+		hash, err := currentIcons.persist(image)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec("UPDATE users SET icon_hash=? WHERE id=?", hash, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := currentIcons.load(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	e := echo.New()
@@ -123,7 +140,10 @@ UPDATE reactions SET created_at=id;`); err != nil {
 	e.GET("/api/livestream/:livestream_id/report", getLivecommentReportsHandler)
 	e.POST("/api/livestream/:livestream_id/reaction", postReactionHandler)
 	e.POST("/api/livestream/reservation", reserveLivestreamHandler)
+	e.GET("/api/user/:username/icon", getIconHandler)
+	e.POST("/api/icon", postIconHandler)
 	t.Run("response_batching", func(t *testing.T) { checkResponseBatching(t, db, e, store) })
+	t.Run("icons", func(t *testing.T) { checkIconsMySQL(t, db, e, store) })
 
 	checkUser := func(t *testing.T, name string, want UserStatistics) {
 		t.Helper()
@@ -236,6 +256,14 @@ UPDATE reactions SET created_at=id;`); err != nil {
 
 func improvementRequest(t *testing.T, e *echo.Echo, store *sessions.CookieStore, method, path, body string, userID int64) *httptest.ResponseRecorder {
 	t.Helper()
+	req := improvementHTTPRequest(t, store, method, path, body, userID)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	return rec
+}
+
+func improvementHTTPRequest(t *testing.T, store *sessions.CookieStore, method, path, body string, userID int64) *http.Request {
+	t.Helper()
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	sess, err := store.New(req, defaultSessionIDKey)
@@ -251,7 +279,5 @@ func improvementRequest(t *testing.T, e *echo.Echo, store *sessions.CookieStore,
 	for _, cookie := range cookieResponse.Result().Cookies() {
 		req.AddCookie(cookie)
 	}
-	rec := httptest.NewRecorder()
-	e.ServeHTTP(rec, req)
-	return rec
+	return req
 }

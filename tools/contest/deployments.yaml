@@ -4,19 +4,24 @@ include: [../deployctl/deployments.yaml]
 deployments:
   app:
     uploads:
-      - {label: application, role: app, local: '{var:app_dir}/', remote: '{var:remote_home}/{var:app_dir}/', delete: true, excludes: ['*.pprof', default.pgo]}
-      - {label: systemd unit, role: app, local: 'etc/systemd/system/{var:service}.service', remote: '/etc/systemd/system/{var:service}.service'}
+      - &app_code {label: application, role: app, local: '{var:app_dir}/', remote: '{var:remote_home}/{var:app_dir}/', delete: true, excludes: ['*.pprof', default.pgo]}
+      - &app_unit {label: systemd unit, role: app, local: 'etc/systemd/system/{var:service}.service', remote: '/etc/systemd/system/{var:service}.service'}
       - &sql_assets {label: SQL and DNS schema assets, role: mysql, local: '{var:sql_dir}/', remote: '{var:remote_home}/{var:sql_dir}/', delete: true}
       - &zone_assets {label: DNS initialization assets, role: mysql, local: webapp/pdns/, remote: '{var:remote_home}/webapp/pdns/', delete: true}
-    activations:
+    activations: &app_activation
       - label: restart application
         role: app
         script: |
           set -eu
           sudo chown -R {var:isucon_user}:{var:isucon_user} {var:remote_home}/{var:app_dir} {var:remote_home}/webapp/sql {var:remote_home}/webapp/pdns
+          sudo install -d -o {var:isucon_user} -g {var:isucon_user} -m 0755 /var/lib/isupipe /var/lib/isupipe/icons
           sudo systemctl daemon-reload
           sudo systemctl restart {var:service}
           sudo systemctl is-active --quiet {var:service}
+
+  app-after-schema:
+    uploads: [*app_code, *app_unit]
+    activations: *app_activation
 
   pdns-config:
     uploads: &pdns_uploads
@@ -106,8 +111,8 @@ plans:
       dns-stop: {needs: [app-stop]}
       db-schema: {needs: [dns-stop]}
       dns-start: {needs: [db-schema]}
-      app-start: {needs: [dns-start]}
-      app-initialize: {needs: [app-start]}
+      app-after-schema: {needs: [dns-start]}
+      app-initialize: {needs: [app-after-schema]}
   roles:
     deployments:
       roles-off: {}
