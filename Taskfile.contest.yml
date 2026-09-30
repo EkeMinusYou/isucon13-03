@@ -9,6 +9,68 @@
 version: '3'
 
 tasks:
+  deploy-nginx-split-dry:
+    desc: nginx移設の配布先と起動順を実行せず表示する
+    deps: [build-deployctl]
+    cmds:
+      - task: gen
+      - task: build
+      - '{{.DEPLOYCTL_DIR}}/deployctl apply-plan nginx-split -dry-run -config {{.DEPLOYCTL_CONFIG}} {{.DEPLOYCTL_COMMON}}'
+
+  inspect-nginx-split-prereqs:
+    desc: 計測停止・OS/Arch・移設先の証明書を読み取り確認する
+    cmds:
+      - task: inspect-dns-batching-prereqs
+      - for: { var: NGINX_HOSTS }
+        cmd: |
+          {{.SSH}} {{.SSH_USER}}@{{.ITEM}} '
+            set -eu
+            test -r /etc/nginx/tls/_.u.isucon.dev.crt
+            sudo test -r /etc/nginx/tls/_.u.isucon.dev.key
+            test -r /etc/nginx/tls/_.t.isucon.dev.crt
+            sudo test -r /etc/nginx/tls/_.t.isucon.dev.key
+            echo "{{.ITEM}}: ingress certificates exist"
+          '
+      - |
+        {{.SSH}} {{.SSH_USER}}@{{.MYSQL_HOST}} '
+          sudo mysql -N {{.DB_NAME}} -e "SELECT COUNT(*) AS registration_smoke_account FROM users WHERE name=\"role-split-smoke\""
+        '
+
+  inspect-dns-registration-state:
+    desc: DNS世代と登録名を読み取り、入口移設前後で比較する
+    cmds:
+      - for: { var: PDNS_HOSTS }
+        cmd: |
+          {{.SSH}} {{.SSH_USER}}@{{.ITEM}} '
+            sudo sed -n "/^; ISUPIPE EPOCH /,$ p" /var/lib/isupipe/dns/u.isucon.dev.zone | awk "{print \$1,\$2,\$3,\$4}"
+          '
+
+  deploy-nginx-split:
+    desc: nginxをDNSホストへ移設し、既存DBとDNS登録を保持して入口を切り替える
+    preconditions:
+      - sh: test ! -f '{{.RUN_STATE_FILE}}'
+        msg: active benchmark exists
+    cmds:
+      - task: inspect-nginx-split-prereqs
+      - task: gen
+      - task: build
+      - mkdir -p .task
+      - task --silent inspect-writer-data > .task/nginx-split-data-before.tsv
+      - task --silent inspect-dns-registration-state > .task/nginx-split-dns-before.tsv
+      - task: deploy-plan
+        vars: { PLAN: nginx-split }
+      - task: check-role-split
+      - task: check-app-deployment
+      - task --silent inspect-writer-data > .task/nginx-split-data-after.tsv
+      - task --silent inspect-dns-registration-state > .task/nginx-split-dns-after.tsv
+      - diff .task/nginx-split-data-before.tsv .task/nginx-split-data-after.tsv
+      - diff .task/nginx-split-dns-before.tsv .task/nginx-split-dns-after.tsv
+      - task: check-app-deployment
+        vars: { ICON_SMOKE_PHASE: write, REGISTRATION_SMOKE_PHASE: '{{.REGISTRATION_SMOKE_PHASE | default "write"}}' }
+      - task: deploy-app
+      - task: check-app-deployment
+        vars: { ICON_SMOKE_PHASE: read, REGISTRATION_SMOKE_PHASE: read }
+
   inspect-dns-batching-prereqs:
     desc: DNS・DB・アプリのOS/Archと計測停止を確認する
     preconditions:

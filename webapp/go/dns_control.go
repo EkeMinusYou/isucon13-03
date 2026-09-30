@@ -102,15 +102,26 @@ func newDNSControl(base, zonePath string, reload func(uint32) error) (*dnsContro
 				d.names[fields[0]] = true
 			}
 		}
-	} else if err := d.persist(); err != nil {
+	}
+	text, err := d.zoneContent()
+	if err != nil {
 		return nil, err
+	}
+	// Readdress existing names without resetting the registration generation.
+	if !bytes.Equal(data, text) {
+		if data != nil {
+			d.serial++
+		}
+		if err := d.persist(); err != nil {
+			return nil, err
+		}
 	}
 	return d, nil
 }
 
-func (d *dnsControl) persist() error {
+func (d *dnsControl) zoneContent() ([]byte, error) {
 	if !dnsSerialLine.MatchString(d.base) {
-		return fmt.Errorf("base zone has no SOA serial")
+		return nil, fmt.Errorf("base zone has no SOA serial")
 	}
 	text := dnsSerialLine.ReplaceAllString(d.base, fmt.Sprintf("    %d ; serial", d.serial))
 	names := make([]string, 0, len(d.names))
@@ -125,6 +136,14 @@ func (d *dnsControl) persist() error {
 	for _, name := range names {
 		fmt.Fprintf(&b, "%s 0 IN A %s\n", name, address)
 	}
+	return []byte(b.String()), nil
+}
+
+func (d *dnsControl) persist() error {
+	data, err := d.zoneContent()
+	if err != nil {
+		return err
+	}
 	dir := filepath.Dir(d.zonePath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
@@ -135,7 +154,7 @@ func (d *dnsControl) persist() error {
 	}
 	defer os.Remove(f.Name())
 	if err = f.Chmod(0644); err == nil {
-		_, err = f.WriteString(b.String())
+		_, err = f.Write(data)
 	}
 	if err == nil {
 		err = f.Sync()

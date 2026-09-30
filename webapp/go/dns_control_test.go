@@ -93,3 +93,32 @@ func TestDNSNameValidation(t *testing.T) {
 		t.Fatalf("unsafe zone owner: %q", got)
 	}
 }
+
+func TestDNSRestartReaddressesExistingNames(t *testing.T) {
+	oldAddress, newAddress := "192.0.2.3", "192.0.2.1"
+	t.Setenv(powerDNSSubdomainAddressEnvKey, oldAddress)
+	base := "$TTL 0\n@ SOA ns1 hostmaster (\n    0 ; serial\n1 1 1 1)\npipe 0 IN A " + oldAddress + "\n"
+	zone := filepath.Join(t.TempDir(), "zone")
+	d, err := newDNSControl(base, zone, func(uint32) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.names["existing-user"] = true
+	d.epoch = 7
+	if err := d.persist(); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(powerDNSSubdomainAddressEnvKey, newAddress)
+	restored, err := newDNSControl(strings.ReplaceAll(base, oldAddress, newAddress), zone, func(uint32) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(zone)
+	if err != nil || restored.epoch != 7 || !restored.names["existing-user"] || restored.serial != d.serial+1 || strings.Contains(string(data), oldAddress) || !strings.Contains(string(data), "existing-user 0 IN A "+newAddress) {
+		t.Fatalf("readdress lost state or retained old address: epoch=%d serial=%d zone=%s err=%v", restored.epoch, restored.serial, data, err)
+	}
+	again, err := newDNSControl(restored.base, zone, func(uint32) error { return nil })
+	if err != nil || again.serial != restored.serial || again.epoch != 7 {
+		t.Fatalf("unchanged restart must preserve serial and generation: %v", err)
+	}
+}

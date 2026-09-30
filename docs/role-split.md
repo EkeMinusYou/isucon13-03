@@ -7,9 +7,9 @@
 
 | ホスト | 稼働サービス | 接続先・保存先 |
 | --- | --- | --- |
-| isucon-1 | PowerDNS・DNS更新サービス | BIND backendで全ゾーンをメモリに保持。Aレコードはisucon-3の公開IPを返す |
+| isucon-1 | PowerDNS・DNS更新サービス・nginx | BIND backendで全ゾーンをメモリに保持。Aレコードはisucon-1の公開IPを返す。GoへHTTP/1.1 keepaliveで接続 |
 | isucon-2 | MySQL | isupipeの保存先。内部IPでTCP接続を受ける |
-| isucon-3 | Go・nginx | isucon-2のisupipeへ接続。画像はローカルの/var/lib/isupipe/iconsに保存 |
+| isucon-3 | Go | isucon-2のisupipeへ接続。画像はローカルの/var/lib/isupipe/iconsに保存し、Goから本文を返す |
 
 役割外のGo・nginx・MySQL・PowerDNSは停止・無効化した。
 競技DBはisucon-2で再作成し、isucon-3の公式初期化APIで初期データとDNSゾーンをロードした。
@@ -63,3 +63,36 @@ smokeは初期ユーザーtest001の画像を更新し、role-split-smokeユー�
 
 スコアと負荷中のCPU・DB待ちの変化は、次のユーザー実行RUNで評価する。
 今回の再起動確認はサービス再起動であり、OSの再起動は行っていない。
+
+## nginxの移設
+
+RUN `20260930-155539`は117,124点・PASS。負荷60秒で3号機は112.9／120コア秒を消費し、
+Goが59.3、nginxが37.9コア秒だった。1・2号機の消費は各約25コア秒で、nginxを1号機へ移す。
+
+- TaskfileのNGINX_HOSTSを1号機へ変更し、生成upstreamをAPIの接続先に使う。
+- nginxはHTTP/1.1と空のConnectionヘッダでupstreamのkeepaliveを利用する。
+- public assetsを1号機へ配布する。証明書は既存のものを保持する。
+- アイコンのETag判定は単一Goに残し、200の画像本文を3号機から返す。If-Modified-Sinceだけでは304を返さない。
+- DNS更新サービスは、保存済みの登録名とepochを復元し、新しい入口IPでゾーンを永続化する。変更時にSOA serialを進める。
+- 新しい入口のTLS・静的ファイル・API疎通を確認してからDNSを再起動し、最後に3号機のnginxを停止・無効化する。
+
+```sh
+task deploy-nginx-split-dry
+task deploy-nginx-split
+```
+
+配布対象は1号機のnginx・DNSと3号機のGo。2号機のMySQL再起動、DB再作成、公式初期化は行わない。
+配布前後の競技DBの件数・tip合計、DNSの登録名とepochを比較する。
+続いて画像更新・登録・DNS・HTTPSを確認し、Go再起動後に同じ画像と登録を取得する。
+登録確認ユーザーが既に存在する場合は`REGISTRATION_SMOKE_PHASE=read`で実行する。
+確認用の画像更新とユーザー登録は競技DBに保存され、次の公式初期化で消去される。
+
+ログは`.task/nginx-split-{prereqs,dry,mysql-tests,deploy}.log`。
+性能は次のユーザー実行RUNでCPU配置、投稿遅延・成功件数、予約成功、得点を比較する。
+
+実施結果：`task deploy-nginx-split`は終了コード0で完了した。
+ローカルrace test、DNSの入口変更・登録保持テスト、実MySQLの一時DB検証、Linux/amd64ビルドを通過。
+1号機の証明書・静的ファイル・nginx→Go疎通、サービスの役割、DNSの入口を確認した。
+配布前後の競技DBの件数・tip合計とDNS登録名・epochは一致した。
+画像の本文・hash・ETag・304、登録ユーザーのDNS・サブドメインHTTPSを確認し、Go再起動後も取得できた。
+ベンチマーカー、DB再作成、公式初期化、OS再起動は実行していない。

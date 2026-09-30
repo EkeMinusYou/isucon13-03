@@ -71,7 +71,7 @@ vars:
       isucon-3: 13.231.248.152
   APP_HOSTS: isucon-3
   APP_TRAFFIC_HOSTS: isucon-3
-  NGINX_HOSTS: isucon-3
+  NGINX_HOSTS: isucon-1
   PDNS_HOSTS: isucon-1
   DNS_CONTROL_PORT: '8053'
   PDNS_IP: '{{index .IP (splitList " " .PDNS_HOSTS | first)}}'

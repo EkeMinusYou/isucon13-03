@@ -201,9 +201,13 @@ func getIconHandler(c echo.Context) error {
 	if iconETagMatches(c.Request().Header.Get("If-None-Match"), hash) {
 		return c.NoContent(http.StatusNotModified)
 	}
-	c.Response().Header().Set("Content-Type", "image/jpeg")
-	c.Response().Header().Set("X-Accel-Redirect", "/_internal/icons/"+hash)
-	return c.NoContent(http.StatusOK)
+	// Keep immutable image files with their owner when nginx runs on another host.
+	file, err := os.Open(filepath.Join(s.dir, hash))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to open icon: "+err.Error())
+	}
+	defer file.Close()
+	return c.Stream(http.StatusOK, "image/jpeg", file)
 }
 
 func postIconHandler(c echo.Context) error {

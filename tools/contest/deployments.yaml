@@ -2,6 +2,53 @@
 include: [../deployctl/deployments.yaml]
 
 deployments:
+  nginx:
+    uploads:
+      - {label: nginx configuration, role: nginx, local: nginx/, remote: /etc/nginx/, excludes: [tls/], delete: true, validate: sudo nginx -t}
+      - {label: public assets, role: nginx, local: webapp/public/, remote: /home/isucon/webapp/public/, delete: true}
+    activations:
+      - label: reload or start nginx
+        role: nginx
+        script: |
+          set -eu
+          if sudo systemctl is-active --quiet nginx; then
+            sudo systemctl reload nginx
+          else
+            sudo systemctl enable --now nginx
+          fi
+          sudo systemctl is-active --quiet nginx
+          curl --fail --silent --show-error --max-time 10 --cacert /etc/nginx/tls/_.u.isucon.dev.crt --resolve pipe.u.isucon.dev:443:127.0.0.1 https://pipe.u.isucon.dev/api/tag >/dev/null
+          curl --fail --silent --show-error --max-time 10 --cacert /etc/nginx/tls/_.u.isucon.dev.crt --resolve pipe.u.isucon.dev:443:127.0.0.1 https://pipe.u.isucon.dev/ >/dev/null
+
+  nginx-retire:
+    activations:
+      - label: stop nginx on the application host after DNS switches
+        role: app
+        script: |
+          set -eu
+          case ',{var:nginx_hosts},' in
+            *',{host},'*) ;;
+            *) sudo systemctl disable --now nginx; test "$(sudo systemctl show nginx -p MainPID --value)" = 0 ;;
+          esac
+
+  ingress-dns:
+    uploads:
+      - {label: DNS topology environment, role: dns, local: tools/contest/generated/topology.env, remote: /home/isucon/topology.env}
+      - {label: PowerDNS configuration, role: dns, local: 'etc/hosts/{host}/powerdns/', remote: /etc/powerdns/, delete: true, validate: 'sudo pdns_server --config=check'}
+      - {label: PowerDNS systemd drop-in, role: dns, local: etc/systemd/system/pdns.service.d/, remote: /etc/systemd/system/pdns.service.d/}
+      - {label: DNS update owner, role: dns, local: '{var:app_dir}/isupipe', remote: /usr/local/bin/isupipe-dns-control}
+      - {label: DNS update unit, role: dns, local: etc/systemd/system/isupipe-dns.service, remote: /etc/systemd/system/isupipe-dns.service}
+    activations:
+      - label: publish the new ingress while preserving registered names
+        role: dns
+        script: |
+          set -eu
+          sudo chmod 0755 /usr/local/bin/isupipe-dns-control
+          sudo systemctl daemon-reload
+          sudo systemctl restart isupipe-dns
+          sudo systemctl restart pdns
+          sudo systemctl is-active --quiet isupipe-dns pdns
+
   topology-config:
     uploads:
       - &topology_env {label: topology environment, role: all, local: tools/contest/generated/topology.env, remote: /home/isucon/topology.env}
@@ -134,6 +181,12 @@ deployments:
           esac
 
 plans:
+  nginx-split:
+    deployments:
+      app: {}
+      nginx: {needs: [app]}
+      ingress-dns: {needs: [nginx]}
+      nginx-retire: {needs: [ingress-dns]}
   deploy-all:
     deployments:
       topology-config: {}
