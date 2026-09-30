@@ -10,7 +10,7 @@ version: '3'
 
 tasks:
   check-app-improvements:
-    desc: 統計・モデレーションを実MySQLの一時検証DBで確認する（競技DBは変更しない）
+    desc: 応答・同時予約・統計・モデレーションを実MySQLの一時検証DBで確認する（競技DBは変更しない）
     preconditions:
       - sh: test ! -f '{{.RUN_STATE_FILE}}'
         msg: active benchmark exists
@@ -29,6 +29,7 @@ tasks:
             test "$(uname -s)" = Linux
             test "$(uname -m)" = x86_64
             test "$(curl --fail --silent http://127.0.0.1:6060/debug/profiles/status)" = "{\"cpu\":\"\",\"fgprof\":\"\"}"
+            cd {{.REMOTE_HOME}}/{{.APP_DIR}}
             sudo env ISUCON_TEST_MYSQL_DSN="root@unix(/var/run/mysqld/mysqld.sock)/" \
               ISUCON_TEST_SCHEMA=/tmp/isucon-app-improvements/schema.sql \
               /tmp/isucon-app-improvements/app.test -test.v -test.run "^TestImprovementsMySQL$"
@@ -56,6 +57,7 @@ tasks:
             test "$indexes" -eq 11
             echo "{{.ITEM}}: running binary matches; all 11 indexes exist"
             sudo mysql -t {{.DB_NAME}} -e "EXPLAIN SELECT * FROM livestream_tags WHERE livestream_id = 1"
+            sudo mysql -t {{.DB_NAME}} -e "EXPLAIN SELECT * FROM reservation_slots WHERE start_at >= 1700874000 AND start_at < 1700877600 AND end_at <= 1700877600 FOR UPDATE"
           '
       - '{{.SSH}} {{.SSH_USER}}@{{.ENTRY_HOST}} ''mkdir -p {{.SMOKE_REMOTE_DIR}}'''
       - '{{.RSYNC}} {{.SMOKE_TOOL_DIR}}/smoke {{.SSH_USER}}@{{.ENTRY_HOST}}:{{.SMOKE_REMOTE_DIR}}/smoke'

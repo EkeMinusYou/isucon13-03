@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -89,6 +90,21 @@ INSERT INTO livecomment_reports (user_id, livestream_id, livecomment_id, created
 	if _, err := db.Exec(fixture); err != nil {
 		t.Fatal(err)
 	}
+	previousTags := currentTags.Load()
+	defer currentTags.Store(previousTags)
+	if _, err := db.Exec(`
+INSERT INTO themes (id, user_id, dark_mode) VALUES
+ (1,1,TRUE), (2,2,FALSE), (3,3,FALSE), (4,4,FALSE), (5,5,FALSE);
+INSERT INTO icons (user_id,image) VALUES (1,'first-icon'), (2,X'');
+INSERT INTO tags (id,name) VALUES (1,'tag-a'), (2,'tag-b');
+INSERT INTO livestream_tags (livestream_id,tag_id) VALUES (1,2), (1,1), (2,2), (1,2);
+UPDATE livecomments SET created_at=id;
+UPDATE reactions SET created_at=id;`); err != nil {
+		t.Fatal(err)
+	}
+	if err := reloadTags(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	e := echo.New()
 	store := sessions.NewCookieStore(secret)
 	e.Use(session.Middleware(store))
@@ -96,6 +112,18 @@ INSERT INTO livecomment_reports (user_id, livestream_id, livecomment_id, created
 	e.GET("/api/livestream/:livestream_id/statistics", getLivestreamStatisticsHandler)
 	e.POST("/api/livestream/:livestream_id/moderate", moderateHandler)
 	e.POST("/api/livestream/:livestream_id/livecomment", postLivecommentHandler)
+	e.GET("/api/tag", getTagHandler)
+	e.GET("/api/user/:username", getUserHandler)
+	e.GET("/api/livestream/search", searchLivestreamsHandler)
+	e.GET("/api/livestream", getMyLivestreamsHandler)
+	e.GET("/api/user/:username/livestream", getUserLivestreamsHandler)
+	e.GET("/api/livestream/:livestream_id", getLivestreamHandler)
+	e.GET("/api/livestream/:livestream_id/livecomment", getLivecommentsHandler)
+	e.GET("/api/livestream/:livestream_id/reaction", getReactionsHandler)
+	e.GET("/api/livestream/:livestream_id/report", getLivecommentReportsHandler)
+	e.POST("/api/livestream/:livestream_id/reaction", postReactionHandler)
+	e.POST("/api/livestream/reservation", reserveLivestreamHandler)
+	t.Run("response_batching", func(t *testing.T) { checkResponseBatching(t, db, e, store) })
 
 	checkUser := func(t *testing.T, name string, want UserStatistics) {
 		t.Helper()
@@ -144,6 +172,7 @@ INSERT INTO livecomment_reports (user_id, livestream_id, livecomment_id, created
 		checkUser(t, "alpha", UserStatistics{Rank: 2, ViewersCount: 3, TotalReactions: 4, TotalLivecomments: 2, TotalTip: 10, FavoriteEmoji: "c"})
 		checkLivestream(t, 1, LivestreamStatistics{Rank: 3, ViewersCount: 2, TotalReactions: 3, TotalReports: 2, MaxTip: 3})
 	})
+	t.Run("reservation_atomicity", func(t *testing.T) { checkReservationAtomicity(t, db, e, store) })
 	for _, word := range []string{"café", "a_b", "q%r", `slash\_`, ""} {
 		t.Run("moderation_"+word, func(t *testing.T) {
 			if _, err := db.Exec("DELETE FROM ng_words; DELETE FROM livecomments; INSERT INTO ng_words (user_id, livestream_id, word, created_at) VALUES (1, 1, 'legacy', 0)"); err != nil {

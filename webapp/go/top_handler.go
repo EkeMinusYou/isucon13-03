@@ -19,37 +19,15 @@ type TagModel struct {
 }
 
 type TagsResponse struct {
-	Tags []*Tag `json:"tags"`
+	Tags []Tag `json:"tags"`
 }
 
 func getTagHandler(c echo.Context) error {
-	ctx := c.Request().Context()
-
-	tx, err := dbConn.BeginTxx(ctx, nil)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to begin new transaction: : "+err.Error()+err.Error())
+	catalog := currentTags.Load()
+	if catalog == nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "tag catalog is not loaded")
 	}
-	defer tx.Rollback()
-
-	var tagModels []*TagModel
-	if err := tx.SelectContext(ctx, &tagModels, "SELECT * FROM tags"); err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get tags: "+err.Error())
-	}
-
-	if err := tx.Commit(); err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to commit: "+err.Error())
-	}
-
-	tags := make([]*Tag, len(tagModels))
-	for i := range tagModels {
-		tags[i] = &Tag{
-			ID:   tagModels[i].ID,
-			Name: tagModels[i].Name,
-		}
-	}
-	return c.JSON(http.StatusOK, &TagsResponse{
-		Tags: tags,
-	})
+	return c.JSON(http.StatusOK, TagsResponse{Tags: catalog.tags})
 }
 
 // 配信者のテーマ取得API

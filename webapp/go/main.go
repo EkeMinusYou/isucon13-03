@@ -4,6 +4,7 @@ package main
 // sqlx的な参考: https://jmoiron.github.io/sqlx/
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net"
@@ -115,6 +116,10 @@ func initializeHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to initialize: "+err.Error())
 	}
 
+	if err := reloadTags(c.Request().Context()); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to load tags: "+err.Error())
+	}
+
 	c.Request().Header.Add("Content-Type", "application/json;charset=utf-8")
 	return c.JSON(http.StatusOK, InitializeResponse{
 		Language: "golang",
@@ -196,6 +201,9 @@ func main() {
 	}
 	defer conn.Close()
 	dbConn = conn
+	if err := reloadTags(context.Background()); err != nil {
+		e.Logger.Fatalf("failed to load tags: %v", err)
+	}
 	if err := startProfileServer(180); err != nil {
 		e.Logger.Fatalf("failed to start measurement listener: %v", err)
 	}
