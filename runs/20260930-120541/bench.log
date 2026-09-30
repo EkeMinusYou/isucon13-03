@@ -1,0 +1,661 @@
+2026-09-30T03:05:46.945151126Z	BENCHMARK_START
+2026-09-30T03:05:47.738Z	info	isupipe-benchmarker	SSL接続が有効になっています
+2026-09-30T03:05:47.738Z	info	isupipe-benchmarker	静的ファイルチェックを行います
+2026-09-30T03:05:47.738Z	info	isupipe-benchmarker	静的ファイルチェックが完了しました
+2026-09-30T03:05:47.738Z	info	isupipe-benchmarker	webappの初期化を行います
+2026-09-30T03:05:47.738Z	info	staff-logger	bench/bench.go:172	SSL接続が有効になっています
+2026-09-30T03:05:47.738Z	info	staff-logger	bench/bench.go:193	webapp: https://pipe.u.isucon.dev:443
+2026-09-30T03:05:47.738Z	info	staff-logger	bench/bench.go:194	nameserver: 172.31.40.191:53
+2026-09-30T03:06:03.061Z	info	isupipe-benchmarker	ベンチマーク走行前のデータ整合性チェックを行います
+2026-09-30T03:06:08.583Z	info	isupipe-benchmarker	整合性チェックが成功しました
+2026-09-30T03:06:08.583Z	info	isupipe-benchmarker	ベンチマーク走行を開始します
+2026-09-30T03:06:08.589Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:08.589Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:08.589Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:08.589Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:08.589Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:08.589Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:08.589Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:08.589Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:08.589Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:08.589Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:08.954Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:08.954Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:08.954Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:08.961Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:08.963Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:08.963Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:09.054Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:09.186Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:09.274Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:09.274Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:09.274Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:09.466Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:09.466Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:09.466Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:09.466Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:09.466Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:09.472Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:09.717Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:10.000Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:10.589Z	info	isupipe-benchmarker	DNS水責め負荷が上昇します	{"parallelis": 3}
+2026-09-30T03:06:10.598Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:10.639Z	info	staff-logger	scenario/viewer.go:46	change icon
+2026-09-30T03:06:10.710Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:10.895Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:10.895Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:10.895Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:10.967Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:10.967Z	info	staff-logger	scenario/viewer.go:76	visit user profile
+2026-09-30T03:06:11.131Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:11.131Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:11.131Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:11.176Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:11.331Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:11.358Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:11.358Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:11.358Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:11.660Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:11.660Z	info	staff-logger	scenario/viewer.go:76	visit user profile
+2026-09-30T03:06:11.815Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:12.054Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:12.054Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:12.054Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:12.054Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:12.289Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:12.289Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:12.289Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:12.589Z	info	isupipe-benchmarker	DNS水責め負荷が上昇します	{"parallelis": 4}
+2026-09-30T03:06:13.179Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:13.179Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:13.179Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:13.179Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:13.844Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:13.844Z	info	staff-logger	scenario/viewer.go:76	visit user profile
+2026-09-30T03:06:14.023Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:14.023Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:14.023Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:14.023Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:14.090Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:14.095Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:14.299Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:14.589Z	info	isupipe-benchmarker	DNS水責め負荷が上昇します	{"parallelis": 6}
+2026-09-30T03:06:14.915Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:15.190Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:15.351Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:15.351Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:15.771Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:15.771Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:15.771Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:15.771Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:15.952Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:15.953Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:15.953Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:15.953Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:16.020Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:16.020Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:16.020Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:16.020Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:16.229Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:16.229Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:16.229Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:16.229Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:16.439Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:16.749Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:17.514Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:17.514Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:17.514Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:17.514Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:17.621Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:17.621Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:17.938Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:17.938Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:17.938Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:17.939Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:17.958Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:17.958Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:17.958Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:17.958Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:18.330Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:18.795Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:18.795Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:18.795Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:18.795Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:19.912Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:20.291Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:20.355Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:20.355Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:20.355Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:20.355Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:20.417Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:20.417Z	info	staff-logger	scenario/viewer.go:76	visit user profile
+2026-09-30T03:06:20.601Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:20.601Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:20.601Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:20.601Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:20.602Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:20.703Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:20.768Z	warn	staff-logger	scenario/streamer.go:139	streamer_moderate: failed to visit livestream admin: benchmark-application: [一般エラー] GET /api/livestream/7532/report へのリクエストに対して、期待されたHTTPステータスコードが確認できませんでした (expected:200, actual:500)
+
+2026-09-30T03:06:20.833Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:20.833Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:20.833Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:20.834Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:21.343Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:21.343Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:21.344Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:21.344Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:21.454Z	warn	staff-logger	scenario/streamer.go:139	streamer_moderate: failed to visit livestream admin: benchmark-application: [一般エラー] GET /api/livestream/7522/report へのリクエストに対して、期待されたHTTPステータスコードが確認できませんでした (expected:200, actual:500)
+
+2026-09-30T03:06:21.546Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:21.714Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:21.824Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:21.986Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:22.077Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:22.077Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:22.077Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:22.077Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:22.124Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:22.124Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:22.124Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:22.124Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:22.248Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:22.248Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:22.248Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:22.248Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:22.446Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:22.446Z	info	staff-logger	scenario/viewer.go:46	change icon
+2026-09-30T03:06:22.520Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:23.246Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:23.246Z	info	staff-logger	scenario/viewer.go:76	visit user profile
+2026-09-30T03:06:23.382Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:23.382Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:23.382Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:23.382Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:23.433Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:23.439Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:23.439Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:23.439Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:23.439Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:23.575Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:23.944Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:23.944Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:23.944Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:23.944Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:24.369Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:24.699Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:24.699Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:24.699Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:24.699Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:25.229Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:25.229Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:25.229Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:25.229Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:25.476Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:25.600Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:25.600Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:26.743Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:26.743Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:26.894Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:26.894Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:26.894Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:26.894Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:27.722Z	warn	staff-logger	scenario/streamer.go:198	aggressive streamer moderate: failed to visit livestream admin: benchmark-application: [一般エラー] GET /api/livestream/7522/report へのリクエストに対して、期待されたHTTPステータスコードが確認できませんでした (expected:200, actual:500)
+
+2026-09-30T03:06:27.779Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:27.779Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:27.935Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:27.935Z	info	staff-logger	scenario/viewer.go:76	visit user profile
+2026-09-30T03:06:28.318Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:28.366Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:28.366Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:28.366Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:28.366Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:28.409Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:28.439Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:28.439Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:28.439Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:28.439Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:28.986Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:28.986Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:28.986Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:28.986Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:28.996Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:28.996Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:28.996Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:28.996Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:29.297Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:30.183Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:30.183Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:30.183Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:30.183Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:30.387Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:30.619Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:30.619Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:30.619Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:30.619Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:31.080Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:31.080Z	info	staff-logger	scenario/viewer.go:76	visit user profile
+2026-09-30T03:06:31.228Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:31.364Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:31.604Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:31.604Z	info	staff-logger	scenario/viewer.go:76	visit user profile
+2026-09-30T03:06:31.673Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:31.761Z	warn	staff-logger	scenario/streamer.go:198	aggressive streamer moderate: failed to visit livestream admin: benchmark-application: [一般エラー] GET /api/livestream/7522/report へのリクエストに対して、期待されたHTTPステータスコードが確認できませんでした (expected:200, actual:500)
+
+2026-09-30T03:06:31.948Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:32.388Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:32.388Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:32.388Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:32.388Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:32.948Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:33.217Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:33.353Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:33.612Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:34.035Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:34.035Z	info	staff-logger	scenario/viewer.go:76	visit user profile
+2026-09-30T03:06:34.374Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:35.611Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:35.632Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:35.632Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:35.632Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:35.632Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:35.713Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:35.713Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:35.713Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:35.713Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:36.362Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:36.362Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:36.362Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:36.362Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:37.019Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:37.019Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:37.019Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:37.019Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:37.042Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:37.042Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:37.042Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:37.042Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:37.249Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:37.249Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:37.249Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:37.249Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:37.263Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:37.263Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:37.266Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:37.266Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:37.266Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:37.266Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:37.690Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:37.690Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:37.930Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:37.930Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:37.930Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:37.930Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:38.319Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:38.319Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:38.319Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:38.319Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:38.423Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:38.423Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:38.423Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:38.423Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:38.431Z	info	staff-logger	scenario/viewer.go:90	get livestream stats
+2026-09-30T03:06:38.741Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:39.067Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:39.067Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:39.067Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:39.067Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:39.823Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:39.823Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:39.823Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:39.823Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:39.830Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:39.830Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:39.830Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:39.830Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:40.038Z	info	staff-logger	scenario/viewer.go:90	get livestream stats
+2026-09-30T03:06:40.097Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:40.097Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:40.097Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:40.097Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:40.342Z	info	staff-logger	scenario/viewer.go:90	get livestream stats
+2026-09-30T03:06:40.664Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:40.664Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:40.665Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:40.665Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:42.356Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:42.356Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:42.356Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:42.356Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:42.685Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:42.685Z	info	staff-logger	scenario/viewer.go:76	visit user profile
+2026-09-30T03:06:42.843Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:42.843Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:42.843Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:42.843Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:43.076Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:43.338Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:43.338Z	info	staff-logger	scenario/viewer.go:76	visit user profile
+2026-09-30T03:06:43.520Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:43.858Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:43.858Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:43.858Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:43.858Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:43.934Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:45.126Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:45.126Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:45.126Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:45.126Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:45.135Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:45.135Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:45.135Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:45.135Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:45.276Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:45.276Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:45.276Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:45.276Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:45.384Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:45.384Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:46.077Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:46.077Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:46.077Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:46.077Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:46.264Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:46.264Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:46.264Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:46.264Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:46.483Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:46.483Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:46.483Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:46.483Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:46.798Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:46.798Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:47.104Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:47.104Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:47.105Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:47.105Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:48.300Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:48.300Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:48.300Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:48.300Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:48.524Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:48.524Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:48.524Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:48.524Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:48.814Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:48.814Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:48.814Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:48.814Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:49.162Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:49.522Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:49.522Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:49.522Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:49.522Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:49.661Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:49.661Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:50.398Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:50.398Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:50.398Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:50.398Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:50.790Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:50.790Z	info	staff-logger	scenario/viewer.go:76	visit user profile
+2026-09-30T03:06:50.840Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:50.840Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:50.840Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:50.840Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:51.151Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:51.500Z	warn	staff-logger	scenario/viewer.go:178	viewer_spam: failed to post livecomment (moderated spam): benchmark-application: [一般エラー] POST /api/livestream/7662/livecomment へのリクエストに対して、期待されたHTTPステータスコードが確認できませんでした (expected:400, actual:201)
+
+2026-09-30T03:06:51.657Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:51.657Z	info	staff-logger	scenario/viewer.go:76	visit user profile
+2026-09-30T03:06:51.741Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:51.741Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:51.741Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:51.741Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:51.872Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:51.964Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:51.964Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:51.964Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:51.964Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:52.094Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:52.094Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:52.094Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:52.094Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:52.474Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:52.474Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:52.474Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:52.474Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:52.616Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:52.811Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:52.824Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:52.824Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:52.824Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:52.824Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:53.310Z	warn	staff-logger	scenario/streamer.go:139	streamer_moderate: failed to visit livestream admin: benchmark-application: [一般エラー] GET /api/livestream/7522/report へのリクエストに対して、期待されたHTTPステータスコードが確認できませんでした (expected:200, actual:500)
+
+2026-09-30T03:06:53.382Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:54.042Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:54.464Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:54.464Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:54.464Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:54.464Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:55.266Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:55.266Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:55.266Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:55.266Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:55.563Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:55.563Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:55.563Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:55.563Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:55.651Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:55.651Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:55.651Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:55.651Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:55.751Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:55.751Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:55.751Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:55.751Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:55.842Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:56.011Z	info	staff-logger	scenario/viewer.go:90	get livestream stats
+2026-09-30T03:06:56.014Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:56.014Z	info	staff-logger	scenario/viewer.go:76	visit user profile
+2026-09-30T03:06:56.319Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:56.938Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:56.938Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:56.938Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:56.938Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:57.395Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:57.395Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:57.395Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:57.395Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:57.604Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:57.604Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:57.604Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:57.604Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:58.251Z	warn	staff-logger	scenario/streamer.go:198	aggressive streamer moderate: failed to visit livestream admin: benchmark-application: [一般エラー] GET /api/livestream/7532/report へのリクエストに対して、期待されたHTTPステータスコードが確認できませんでした (expected:200, actual:500)
+
+2026-09-30T03:06:58.364Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:58.364Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:58.364Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:58.364Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:58.672Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:06:58.945Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:58.945Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:58.945Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:58.945Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:06:58.997Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:06:58.997Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:06:58.997Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:06:58.997Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:07:00.320Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:07:00.320Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:07:00.320Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:07:00.320Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:07:00.443Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:07:00.685Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:07:00.685Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:07:00.685Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:07:00.685Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:07:00.752Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:07:00.752Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:07:00.752Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:07:00.752Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:07:00.891Z	info	staff-logger	scenario/viewer.go:90	get livestream stats
+2026-09-30T03:07:01.419Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:07:01.419Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:07:01.419Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:07:01.419Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:07:01.643Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:07:01.643Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:07:01.643Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:07:01.643Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:07:01.691Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:07:01.814Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:07:01.814Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:07:01.814Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:07:01.814Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:07:02.601Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:07:02.601Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:07:02.601Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:07:02.601Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:07:02.943Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:07:02.943Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:07:02.943Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:07:02.943Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:07:04.550Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:07:04.550Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:07:04.550Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:07:04.550Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:07:04.853Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:07:04.853Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:07:04.853Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:07:04.853Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:07:04.858Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:07:05.930Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:07:05.930Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:07:05.930Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:07:05.930Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:07:06.489Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:07:06.489Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:07:06.555Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:07:06.555Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:07:06.652Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:07:07.322Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:07:07.358Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:07:07.358Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:07:07.358Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:07:07.358Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:07:07.409Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:07:07.409Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:07:07.508Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:07:07.508Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:07:07.508Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:07:07.508Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:07:07.726Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:07:07.726Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:07:07.726Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:07:07.726Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:07:08.502Z	info	staff-logger	scenario/viewer.go:32	basic viewer scenario
+2026-09-30T03:07:08.502Z	info	staff-logger	scenario/viewer.go:56	visit top
+2026-09-30T03:07:08.502Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:07:08.502Z	info	staff-logger	scenario/viewer.go:83	visit livestream
+2026-09-30T03:07:08.506Z	info	staff-logger	scenario/streamer.go:48	change icon
+2026-09-30T03:07:08.583Z	info	isupipe-benchmarker	ベンチマーク走行を停止します
+2026-09-30T03:07:08.584Z	warn	staff-logger	scenario/streamer.go:139	streamer_moderate: failed to visit livestream admin: Get "https://sotaroyamazaki0.u.isucon.dev:443/api/livestream/7889/ngwords": context canceled: ベンチマーク走行が継続できないエラーが発生しました
+
+2026-09-30T03:07:08.586Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:07:08.586Z	warn	staff-logger	scenario/viewer.go:67	view: failed to get livestream from pool: context canceled
+
+2026-09-30T03:07:08.587Z	warn	staff-logger	scenario/viewer.go:126	view: failed to get reactions: Get "https://rikanakagawa0.u.isucon.dev:443/api/livestream/7709/reaction": context canceled: ベンチマーク走行が継続できないエラーが発生しました
+
+2026-09-30T03:07:08.587Z	warn	staff-logger	scenario/viewer.go:101	view: failed to get livecomments: Get "https://rikanakagawa0.u.isucon.dev:443/api/livestream/7709/livecomment": context canceled: ベンチマーク走行が継続できないエラーが発生しました
+
+2026-09-30T03:07:08.587Z	warn	staff-logger	scenario/viewer.go:101	view: failed to get livecomments: Get "https://rikanakagawa0.u.isucon.dev:443/api/livestream/7709/livecomment": context canceled: ベンチマーク走行が継続できないエラーが発生しました
+
+2026-09-30T03:07:08.587Z	warn	staff-logger	scenario/viewer.go:101	view: failed to get livecomments: Get "https://rikanakagawa0.u.isucon.dev:443/api/livestream/7709/livecomment": context canceled: ベンチマーク走行が継続できないエラーが発生しました
+
+2026-09-30T03:07:08.587Z	warn	staff-logger	scenario/viewer.go:142	view: failed to leave from livestream: Delete "https://rikanakagawa0.u.isucon.dev:443/api/livestream/7709/exit": context canceled: ベンチマーク走行が継続できないエラーが発生しました
+
+2026-09-30T03:07:08.587Z	warn	staff-logger	scenario/viewer.go:101	view: failed to get livecomments: Get "https://maaya520.u.isucon.dev:443/api/livestream/7698/livecomment": context canceled: ベンチマーク走行が継続できないエラーが発生しました
+
+2026-09-30T03:07:08.588Z	warn	isupipe-benchmarker	ライブコメントを配信に投稿できないため、視聴者が離脱します	{"viewer": "ryohei260", "livestream_id": 7690, "error": "Post \"https://yamamotomai0.u.isucon.dev:443/api/livestream/7690/livecomment\": context canceled: ベンチマーク走行が継続できないエラーが発生しました"}
+2026-09-30T03:07:08.588Z	warn	isupipe-benchmarker	ライブコメントを配信に投稿できないため、視聴者が離脱します	{"viewer": "shota222", "livestream_id": 7708, "error": "Post \"https://ryohei000.u.isucon.dev:443/api/livestream/7708/livecomment\": context canceled: ベンチマーク走行が継続できないエラーが発生しました"}
+2026-09-30T03:07:08.587Z	warn	staff-logger	scenario/viewer.go:101	view: failed to get livecomments: Get "https://maaya520.u.isucon.dev:443/api/livestream/7698/livecomment": context canceled: ベンチマーク走行が継続できないエラーが発生しました
+
+2026-09-30T03:07:08.587Z	warn	staff-logger	scenario/viewer.go:101	view: failed to get livecomments: Get "https://maaya520.u.isucon.dev:443/api/livestream/7698/livecomment": context canceled: ベンチマーク走行が継続できないエラーが発生しました
+
+2026-09-30T03:07:08.587Z	warn	staff-logger	scenario/viewer.go:101	view: failed to get livecomments: Get "https://maaya520.u.isucon.dev:443/api/livestream/7698/livecomment": context canceled: ベンチマーク走行が継続できないエラーが発生しました
+
+2026-09-30T03:07:08.587Z	warn	staff-logger	scenario/viewer.go:101	view: failed to get livecomments: Get "https://maaya520.u.isucon.dev:443/api/livestream/7698/livecomment": context canceled: ベンチマーク走行が継続できないエラーが発生しました
+
+2026-09-30T03:07:08.587Z	warn	staff-logger	scenario/viewer.go:101	view: failed to get livecomments: Get "https://maaya520.u.isucon.dev:443/api/livestream/7698/livecomment": context canceled: ベンチマーク走行が継続できないエラーが発生しました
+
+2026-09-30T03:07:08.587Z	warn	staff-logger	scenario/viewer.go:142	view: failed to leave from livestream: Delete "https://maaya520.u.isucon.dev:443/api/livestream/7698/exit": context canceled: ベンチマーク走行が継続できないエラーが発生しました
+
+2026-09-30T03:07:08.587Z	warn	staff-logger	scenario/viewer.go:184	viewer_spam: failed to post livecomment (non-moderated spam): Post "https://mtanaka1.u.isucon.dev:443/api/livestream/7535/livecomment": context canceled: ベンチマーク走行が継続できないエラーが発生しました
+
+2026-09-30T03:07:08.588Z	warn	staff-logger	scenario/streamer.go:192	aggressive streamer moderate: failed to get my livestream: Get "https://pipe.u.isucon.dev:443/api/livestream": context canceled: ベンチマーク走行が継続できないエラーが発生しました
+
+2026-09-30T03:07:08.588Z	warn	staff-logger	scenario/viewer.go:121	view: failed to post livecomment: Post "https://yamamotomai0.u.isucon.dev:443/api/livestream/7690/livecomment": context canceled: ベンチマーク走行が継続できないエラーが発生しました
+
+2026-09-30T03:07:08.588Z	warn	staff-logger	scenario/viewer.go:121	view: failed to post livecomment: Post "https://ryohei000.u.isucon.dev:443/api/livestream/7708/livecomment": context canceled: ベンチマーク走行が継続できないエラーが発生しました
+
+2026-09-30T03:07:08.588Z	warn	staff-logger	scenario/viewer.go:59	view: failed to visit top page: Get "https://pipe.u.isucon.dev:443/api/tag": context canceled: ベンチマーク走行が継続できないエラーが発生しました
+
+2026-09-30T03:07:08.588Z	warn	staff-logger	scenario/viewer.go:126	view: failed to get reactions: Get "https://nkato0.u.isucon.dev:443/api/livestream/7707/reaction": context canceled: ベンチマーク走行が継続できないエラーが発生しました
+
+2026-09-30T03:07:08.588Z	warn	staff-logger	scenario/viewer.go:101	view: failed to get livecomments: Get "https://nkato0.u.isucon.dev:443/api/livestream/7707/livecomment": context canceled: ベンチマーク走行が継続できないエラーが発生しました
+
+2026-09-30T03:07:08.588Z	warn	staff-logger	scenario/viewer.go:101	view: failed to get livecomments: Get "https://nkato0.u.isucon.dev:443/api/livestream/7707/livecomment": context canceled: ベンチマーク走行が継続できないエラーが発生しました
+
+2026-09-30T03:07:08.588Z	warn	staff-logger	scenario/viewer.go:101	view: failed to get livecomments: Get "https://nkato0.u.isucon.dev:443/api/livestream/7707/livecomment": context canceled: ベンチマーク走行が継続できないエラーが発生しました
+
+2026-09-30T03:07:08.590Z	warn	isupipe-benchmarker	ライブコメントを配信に投稿できないため、視聴者が離脱します	{"viewer": "rmori2", "livestream_id": 7541, "error": "Post \"https://rei140.u.isucon.dev:443/api/livestream/7541/livecomment\": context canceled: ベンチマーク走行が継続できないエラーが発生しました"}
+2026-09-30T03:07:08.589Z	warn	staff-logger	scenario/viewer.go:101	view: failed to get livecomments: Get "https://nkato0.u.isucon.dev:443/api/livestream/7707/livecomment": context canceled: ベンチマーク走行が継続できないエラーが発生しました
+
+2026-09-30T03:07:08.589Z	warn	staff-logger	scenario/viewer.go:101	view: failed to get livecomments: Get "https://nkato0.u.isucon.dev:443/api/livestream/7707/livecomment": context canceled: ベンチマーク走行が継続できないエラーが発生しました
+
+2026-09-30T03:07:08.589Z	warn	staff-logger	scenario/viewer.go:101	view: failed to get livecomments: Get "https://nkato0.u.isucon.dev:443/api/livestream/7707/livecomment": context canceled: ベンチマーク走行が継続できないエラーが発生しました
+
+2026-09-30T03:07:08.589Z	warn	staff-logger	scenario/viewer.go:101	view: failed to get livecomments: Get "https://nkato0.u.isucon.dev:443/api/livestream/7707/livecomment": context canceled: ベンチマーク走行が継続できないエラーが発生しました
+
+2026-09-30T03:07:08.589Z	warn	staff-logger	scenario/viewer.go:142	view: failed to leave from livestream: Delete "https://nkato0.u.isucon.dev:443/api/livestream/7707/exit": context canceled: ベンチマーク走行が継続できないエラーが発生しました
+
+2026-09-30T03:07:08.589Z	warn	staff-logger	scenario/viewer.go:85	view: failed to visit livestream: Post "https://bhasegawa0.u.isucon.dev:443/api/livestream/7711/enter": context canceled: ベンチマーク走行が継続できないエラーが発生しました
+
+2026-09-30T03:07:08.589Z	warn	staff-logger	scenario/streamer.go:204	aggressive streamer moderate: failed to moderate: Post "https://moriyosuke0.u.isucon.dev:443/api/livestream/7944/moderate": context canceled: ベンチマーク走行が継続できないエラーが発生しました
+
+2026-09-30T03:07:08.590Z	warn	staff-logger	scenario/viewer.go:121	view: failed to post livecomment: Post "https://rei140.u.isucon.dev:443/api/livestream/7541/livecomment": context canceled: ベンチマーク走行が継続できないエラーが発生しました
+
+2026-09-30T03:07:08.591Z	info	staff-logger	scenario/viewer.go:64	get livestream
+2026-09-30T03:07:08.591Z	warn	staff-logger	scenario/viewer.go:67	view: failed to get livestream from pool: context canceled
+
+2026-09-30T03:07:08.602Z	info	isupipe-benchmarker	ベンチマーク走行終了
+2026-09-30T03:07:08.602Z	info	isupipe-benchmarker	最終チェックを実施します
+2026-09-30T03:07:08.602Z	info	isupipe-benchmarker	最終チェックが成功しました
+2026-09-30T03:07:08.602Z	info	isupipe-benchmarker	重複排除したログを以下に出力します
+2026-09-30T03:07:08.602Z	info	isupipe-benchmarker	配信を最後まで視聴できた視聴者数	{"viewers": 108}
+2026-09-30T03:07:08.602Z	info	staff-logger	bench/bench.go:260	ベンチマーク走行時間: 1m0.019060137s
+2026-09-30T03:07:08.602Z	info	staff-logger	bench/bench.go:277	ベンチエラーを収集します
+2026-09-30T03:07:08.602Z	info	staff-logger	bench/bench.go:285	内部エラーを収集します
+2026-09-30T03:07:08.602Z	info	staff-logger	bench/bench.go:301	シナリオカウンタを出力します
+2026-09-30T03:07:08.602Z	info	staff-logger	bench/bench.go:323	[シナリオ aggressive-streamer-moderate] 133 回成功, 3 回失敗
+2026-09-30T03:07:08.602Z	info	staff-logger	bench/bench.go:323	[シナリオ dns-watertorture-attack] 138 回成功
+2026-09-30T03:07:08.602Z	info	staff-logger	bench/bench.go:323	[シナリオ streamer-cold-reserve] 494 回成功
+2026-09-30T03:07:08.602Z	info	staff-logger	bench/bench.go:323	[シナリオ streamer-moderate] 94 回成功, 3 回失敗
+2026-09-30T03:07:08.602Z	info	staff-logger	bench/bench.go:323	[シナリオ viewer-report] 43 回成功, 8 回失敗
+2026-09-30T03:07:08.602Z	info	staff-logger	bench/bench.go:323	[シナリオ viewer-spam] 136 回成功, 1 回失敗
+2026-09-30T03:07:08.602Z	info	staff-logger	bench/bench.go:323	[シナリオ viewer] 108 回成功
+2026-09-30T03:07:08.602Z	info	staff-logger	bench/bench.go:323	[失敗シナリオ aggressive-streamer-moderate-fail] 3 回失敗
+2026-09-30T03:07:08.603Z	info	staff-logger	bench/bench.go:323	[失敗シナリオ streamer-moderate-fail] 3 回失敗
+2026-09-30T03:07:08.603Z	info	staff-logger	bench/bench.go:323	[失敗シナリオ viewer-report-fail] 8 回失敗
+2026-09-30T03:07:08.603Z	info	staff-logger	bench/bench.go:323	[失敗シナリオ viewer-spam-fail] 1 回失敗
+2026-09-30T03:07:08.603Z	info	staff-logger	bench/bench.go:329	DNSAttacker並列数: 6
+2026-09-30T03:07:08.603Z	info	staff-logger	bench/bench.go:330	名前解決成功数: 15784
+2026-09-30T03:07:08.603Z	info	staff-logger	bench/bench.go:331	名前解決失敗数: 0
+2026-09-30T03:07:08.603Z	info	staff-logger	bench/bench.go:335	スコア: 22015
+
+SCORE: 22015
+BENCHMARK_PASS
+2026-09-30T03:07:08.752476049Z	BENCHMARK_END

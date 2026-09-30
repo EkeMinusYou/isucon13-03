@@ -1,0 +1,8 @@
+upstream_addr	upstream_status	cache_status	requests	status_2xx	status_3xx	status_4xx	status_5xx	status_other	response_time_sum_ms	response_time_avg_ms	upstream_time_sum_ms	upstream_time_avg_ms
+127.0.0.1:8080	200	NONE	16791	16791	0	0	0	0	587739.000	35.003	587239.000	34.973
+127.0.0.1:8080	201	NONE	4203	4203	0	0	0	0	304916.000	72.547	304616.000	72.476
+127.0.0.1:8080	400	NONE	5	0	0	5	0	0	3.000	0.600	4.000	0.800
+127.0.0.1:8080	401	NONE	2	0	0	2	0	0	3.000	1.500	0.000	0.000
+127.0.0.1:8080	404	NONE	8	0	0	8	0	0	380.000	47.500	384.000	48.000
+127.0.0.1:8080	500	NONE	25	0	0	0	25	0	1560.000	62.400	1532.000	61.280
+127.0.0.1:8080	NONE	NONE	14	0	0	14	0	0	814.000	58.143	796.000	56.857
