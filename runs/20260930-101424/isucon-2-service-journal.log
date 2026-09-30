@@ -1,0 +1,9 @@
+# host=isucon-2 services=isupipe-go,nginx,mysql,pdns load_window=2026-09-30T01:14:27.991269624Z..2026-09-30T01:15:52.502775585Z
+# unit=isupipe-go
+-- No entries --
+# unit=nginx
+-- No entries --
+# unit=mysql
+-- No entries --
+# unit=pdns
+-- No entries --
