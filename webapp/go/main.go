@@ -69,6 +69,8 @@ func connectDB(logger echo.Logger) (*sqlx.DB, error) {
 	// MySQL 8.0 does not digest binary-protocol prepared executions.
 	// Let the driver escape parameters so application SQL remains observable.
 	conf.InterpolateParams = true
+	// Bulk VALUES IDs are mapped using one consecutive block per statement.
+	conf.Params = map[string]string{"auto_increment_increment": "1", "auto_increment_offset": "1"}
 
 	if v, ok := os.LookupEnv(networkTypeEnvKey); ok {
 		conf.Net = v

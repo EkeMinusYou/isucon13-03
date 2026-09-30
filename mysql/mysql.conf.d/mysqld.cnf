@@ -12,6 +12,8 @@
 # The following values assume you have at least 32M ram
 
 [mysqld]
+disable-log-bin
+innodb_flush_log_at_trx_commit = 1
 slow_query_log = ON
 slow_query_log_file = /var/log/mysql/mysql-slow.log
 long_query_time = 0.01

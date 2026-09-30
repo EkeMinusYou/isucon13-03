@@ -332,10 +332,7 @@ func enterLivestreamHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "livestream_id must be integer")
 	}
 
-	err = submitMutation(ctx, int64(livestreamID), func(workCtx context.Context, tx *sqlx.Tx) error {
-		_, err := tx.ExecContext(workCtx, "INSERT INTO livestream_viewers_history (user_id,livestream_id,created_at) VALUES (?,?,?)", userID, livestreamID, time.Now().Unix())
-		return err
-	})
+	err = submitMutation(ctx, int64(livestreamID), &viewerMutation{userID: userID, livestreamID: int64(livestreamID), enter: true})
 	if err != nil {
 		return mutationHTTPError(err)
 	}
@@ -359,10 +356,7 @@ func exitLivestreamHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "livestream_id in path must be integer")
 	}
 
-	err = submitMutation(ctx, int64(livestreamID), func(workCtx context.Context, tx *sqlx.Tx) error {
-		_, err := tx.ExecContext(workCtx, "DELETE FROM livestream_viewers_history WHERE user_id = ? AND livestream_id = ?", userID, livestreamID)
-		return err
-	})
+	err = submitMutation(ctx, int64(livestreamID), &viewerMutation{userID: userID, livestreamID: int64(livestreamID), enter: false})
 	if err != nil {
 		return mutationHTTPError(err)
 	}

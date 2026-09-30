@@ -9,6 +9,50 @@
 version: '3'
 
 tasks:
+  build-bulk-writes:
+    desc: 一括writerと永続化確認用smokeを対象OS/Archへビルドする
+    cmds:
+      - task: build
+      - task: build-smoke
+
+  deploy-bulk-writes:
+    desc: 一括writerとMySQLのbinlog無効化を反映し、再起動後の保存内容を確認する
+    preconditions:
+      - sh: test ! -f '{{.RUN_STATE_FILE}}'
+        msg: active benchmark exists
+    cmds:
+      - task: inspect-dns-batching-prereqs
+      - task: build-bulk-writes
+      - mkdir -p .task
+      - task --silent inspect-writer-data > .task/bulk-writes-data-before.tsv
+      - task: deploy-mysql
+      - task: check-bulk-writes-mysql
+      - task: deploy-app
+      - task: check-app-deployment
+      - task --silent inspect-writer-data > .task/bulk-writes-data-after.tsv
+      - diff .task/bulk-writes-data-before.tsv .task/bulk-writes-data-after.tsv
+      - task: check-app-deployment
+        vars: { MUTATIONS_SMOKE_PHASE: write }
+      - task --silent inspect-writer-data > .task/bulk-writes-persisted-before.tsv
+      - task: deploy-mysql
+      - task: check-bulk-writes-mysql
+      - task: deploy-app
+      - task: check-app-deployment
+        vars: { MUTATIONS_SMOKE_PHASE: read }
+      - task --silent inspect-writer-data > .task/bulk-writes-persisted-after.tsv
+      - diff .task/bulk-writes-persisted-before.tsv .task/bulk-writes-persisted-after.tsv
+
+  check-bulk-writes-mysql:
+    desc: binlog無効化とInnoDB同期保存、採番条件を読み取り確認する
+    cmds:
+      - |
+        {{.SSH}} {{.SSH_USER}}@{{.MYSQL_HOST}} '
+          set -eu
+          actual=$(sudo mysql -N -e "SELECT @@log_bin,@@innodb_flush_log_at_trx_commit,@@auto_increment_increment,@@auto_increment_offset")
+          test "$actual" = "$(printf "0\t1\t1\t1")"
+          echo "MySQL: binlog OFF, durable InnoDB commit, increment/offset 1"
+        '
+
   deploy-nginx-split-dry:
     desc: nginx移設の配布先と起動順を実行せず表示する
     deps: [build-deployctl]
@@ -346,7 +390,7 @@ tasks:
           '
       - '{{.SSH}} {{.SSH_USER}}@{{.ENTRY_HOST}} ''mkdir -p {{.SMOKE_REMOTE_DIR}}'''
       - '{{.RSYNC}} {{.SMOKE_TOOL_DIR}}/smoke {{.SSH_USER}}@{{.ENTRY_HOST}}:{{.SMOKE_REMOTE_DIR}}/smoke'
-      - '{{.SSH}} {{.SSH_USER}}@{{.ENTRY_HOST}} ''{{.SMOKE_REMOTE_DIR}}/smoke {{.SMOKE_ARGS}} -icons-phase "{{.ICON_SMOKE_PHASE | default ""}}" -registration-phase "{{.REGISTRATION_SMOKE_PHASE | default ""}}" -references-phase "{{.REFERENCES_SMOKE_PHASE | default ""}}" -dns-server {{.PDNS_IP}}:53 -dns-address {{.DNS_RECORD_ADDRESS}}'''
+      - '{{.SSH}} {{.SSH_USER}}@{{.ENTRY_HOST}} ''{{.SMOKE_REMOTE_DIR}}/smoke {{.SMOKE_ARGS}} -icons-phase "{{.ICON_SMOKE_PHASE | default ""}}" -registration-phase "{{.REGISTRATION_SMOKE_PHASE | default ""}}" -references-phase "{{.REFERENCES_SMOKE_PHASE | default ""}}" -mutations-phase "{{.MUTATIONS_SMOKE_PHASE | default ""}}" -dns-server {{.PDNS_IP}}:53 -dns-address {{.DNS_RECORD_ADDRESS}}'''
 
   setup-contest-assets:
     desc: 競技固有の依存サービス資材を取得

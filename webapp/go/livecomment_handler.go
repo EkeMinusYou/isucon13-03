@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -159,30 +158,16 @@ func postLivecommentHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusNotFound, "livestream not found")
 	}
 	model := LivecommentModel{UserID: userID, LivestreamID: livestreamID, Comment: req.Comment, Tip: req.Tip, CreatedAt: time.Now().Unix()}
-	var response Livecomment
-	err = submitMutation(ctx, livestreamID, func(workCtx context.Context, tx *sqlx.Tx) error {
-		var spam bool
-		query := `SELECT EXISTS(SELECT 1 FROM ng_words WHERE user_id = ? AND livestream_id = ? AND CONVERT(? USING utf8mb4) COLLATE utf8mb4_general_ci LIKE CONCAT('%', word COLLATE utf8mb4_general_ci, '%'))`
-		if err := tx.GetContext(workCtx, &spam, query, ref.model.UserID, livestreamID, model.Comment); err != nil {
-			return err
-		}
-		if spam {
-			return echo.NewHTTPError(http.StatusBadRequest, "このコメントがスパム判定されました")
-		}
-		result, err := tx.NamedExecContext(workCtx, "INSERT INTO livecomments (user_id, livestream_id, comment, tip, created_at) VALUES (:user_id, :livestream_id, :comment, :tip, :created_at)", model)
-		if err != nil {
-			return err
-		}
-		model.ID, err = result.LastInsertId()
-		if err != nil {
-			return err
-		}
-		response, err = fillLivecommentResponse(workCtx, tx, model)
-		return err
-	})
+	response, err := fillLivecommentResponse(ctx, nil, model)
 	if err != nil {
 		return mutationHTTPError(err)
 	}
+	err = submitMutation(ctx, livestreamID, &commentMutation{model: &model, ownerID: ref.model.UserID})
+	if err != nil {
+		return mutationHTTPError(err)
+	}
+	response.ID = model.ID
+	refreshResponseIcons(&response.User, &response.Livestream.Owner)
 	return c.JSON(http.StatusCreated, response)
 }
 
@@ -205,26 +190,7 @@ func reportLivecommentHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusNotFound, "livestream not found")
 	}
 	var response LivecommentReport
-	err = submitMutation(ctx, livestreamID, func(workCtx context.Context, tx *sqlx.Tx) error {
-		var comment LivecommentModel
-		if err := tx.GetContext(workCtx, &comment, "SELECT * FROM livecomments WHERE id = ?", commentID); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return echo.NewHTTPError(http.StatusNotFound, "livecomment not found")
-			}
-			return err
-		}
-		model := LivecommentReportModel{UserID: userID, LivestreamID: livestreamID, LivecommentID: commentID, CreatedAt: time.Now().Unix(), CommentUserID: comment.UserID, CommentLivestreamID: comment.LivestreamID, Comment: comment.Comment, CommentTip: comment.Tip, CommentCreatedAt: comment.CreatedAt}
-		result, err := tx.NamedExecContext(workCtx, `INSERT INTO livecomment_reports(user_id,livestream_id,livecomment_id,created_at,comment_user_id,comment_livestream_id,comment,comment_tip,comment_created_at) VALUES (:user_id,:livestream_id,:livecomment_id,:created_at,:comment_user_id,:comment_livestream_id,:comment,:comment_tip,:comment_created_at)`, model)
-		if err != nil {
-			return err
-		}
-		model.ID, err = result.LastInsertId()
-		if err != nil {
-			return err
-		}
-		response, err = fillLivecommentReportResponse(workCtx, tx, model)
-		return err
-	})
+	err = submitMutation(ctx, livestreamID, &reportMutation{userID: userID, livestreamID: livestreamID, commentID: commentID, response: &response})
 	if err != nil {
 		return mutationHTTPError(err)
 	}
@@ -252,28 +218,7 @@ func moderateHandler(c echo.Context) error {
 	}
 	var wordID int64
 	word := req.NGWord
-	err = submitMutation(ctx, livestreamID, func(workCtx context.Context, tx *sqlx.Tx) error {
-		result, err := tx.ExecContext(workCtx, "INSERT INTO ng_words(user_id,livestream_id,word,created_at) VALUES (?,?,?,?)", userID, livestreamID, word, time.Now().Unix())
-		if err != nil {
-			return err
-		}
-		wordID, err = result.LastInsertId()
-		if err != nil {
-			return err
-		}
-		var words []string
-		if err := tx.SelectContext(workCtx, &words, "SELECT word FROM ng_words WHERE livestream_id = ?", livestreamID); err != nil {
-			return err
-		}
-		predicates := make([]string, len(words))
-		args := []interface{}{livestreamID}
-		for i, w := range words {
-			predicates[i] = "comment COLLATE utf8mb4_general_ci LIKE CONCAT('%', ?, '%')"
-			args = append(args, w)
-		}
-		_, err = tx.ExecContext(workCtx, "DELETE FROM livecomments WHERE livestream_id = ? AND ("+strings.Join(predicates, " OR ")+")", args...)
-		return err
-	})
+	err = submitMutation(ctx, livestreamID, &moderationMutation{userID: userID, livestreamID: livestreamID, word: word, wordID: &wordID})
 	if err != nil {
 		return mutationHTTPError(err)
 	}

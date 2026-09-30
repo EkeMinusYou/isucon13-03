@@ -16,6 +16,16 @@ type tagCatalog struct {
 
 var currentTags atomic.Pointer[tagCatalog]
 
+// Resolve fallible references before enqueueing; refresh hashes after commit.
+func refreshResponseIcons(users ...*User) {
+	refs := currentReferences.Load()
+	for _, user := range users {
+		if value, ok := refs.users.Load(user.ID); ok {
+			user.IconHash = value.(*userReference).icon.hash.Load().(string)
+		}
+	}
+}
+
 func reloadTags(ctx context.Context) error {
 	var models []TagModel
 	if err := dbConn.SelectContext(ctx, &models, "SELECT * FROM tags ORDER BY id"); err != nil {

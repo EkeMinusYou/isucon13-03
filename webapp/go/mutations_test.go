@@ -18,12 +18,13 @@ import (
 func checkMutationBatches(t *testing.T, db *sqlx.DB, e *echo.Echo, store *sessions.CookieStore) {
 	ctx := context.Background()
 	writer := currentMutations.Load()
+	t.Run("bulk_posts", func(t *testing.T) { checkBulkMutations(t, db) })
 	t.Run("partial_failure_and_commit_failure", func(t *testing.T) {
 		if _, err := db.Exec("CREATE TABLE batch_test (id BIGINT PRIMARY KEY)"); err != nil {
 			t.Fatal(err)
 		}
 		request := func(id int64, reject bool) mutationRequest {
-			return mutationRequest{ctx: ctx, done: make(chan error, 1), apply: func(work context.Context, tx *sqlx.Tx) error {
+			return mutationRequest{ctx: ctx, done: make(chan error, 1), op: mutationFunc(func(work context.Context, tx *sqlx.Tx) error {
 				if _, err := tx.ExecContext(work, "INSERT INTO batch_test VALUES (?)", id); err != nil {
 					return err
 				}
@@ -31,7 +32,7 @@ func checkMutationBatches(t *testing.T, db *sqlx.DB, e *echo.Echo, store *sessio
 					return echo.NewHTTPError(400, "request rejected")
 				}
 				return nil
-			}}
+			})}
 		}
 		batch := []mutationRequest{request(1, false), request(2, true), request(3, false)}
 		before := writer.commits.Load()
@@ -47,7 +48,7 @@ func checkMutationBatches(t *testing.T, db *sqlx.DB, e *echo.Echo, store *sessio
 			t.Fatalf("partial batch: %v %v", ids, err)
 		}
 		failed := request(4, false)
-		failed.apply = func(work context.Context, tx *sqlx.Tx) error {
+		failed.op = mutationFunc(func(work context.Context, tx *sqlx.Tx) error {
 			if _, err := tx.ExecContext(work, "INSERT INTO batch_test VALUES (4)"); err != nil {
 				return err
 			}
@@ -57,7 +58,7 @@ func checkMutationBatches(t *testing.T, db *sqlx.DB, e *echo.Echo, store *sessio
 			}
 			_, err := db.Exec(fmt.Sprintf("KILL CONNECTION %d", id))
 			return err
-		}
+		})
 		writer.write([]mutationRequest{failed})
 		if err := <-failed.done; err == nil {
 			t.Fatal("failed COMMIT acknowledged")
@@ -73,7 +74,7 @@ func checkMutationBatches(t *testing.T, db *sqlx.DB, e *echo.Echo, store *sessio
 		cancelled, cancel := context.WithCancel(ctx)
 		firstDone := make(chan error, 1)
 		go func() {
-			firstDone <- writer.submit(cancelled, 1, func(work context.Context, tx *sqlx.Tx) error {
+			firstDone <- submitTestMutation(writer, cancelled, 1, func(work context.Context, tx *sqlx.Tx) error {
 				close(started)
 				<-gate
 				_, err := tx.ExecContext(work, "INSERT INTO batch_test VALUES (10)")
@@ -87,7 +88,7 @@ func checkMutationBatches(t *testing.T, db *sqlx.DB, e *echo.Echo, store *sessio
 			wg.Add(1)
 			go func(id int64) {
 				defer wg.Done()
-				if err := writer.submit(ctx, 1, func(work context.Context, tx *sqlx.Tx) error {
+				if err := submitTestMutation(writer, ctx, 1, func(work context.Context, tx *sqlx.Tx) error {
 					_, err := tx.ExecContext(work, "INSERT INTO batch_test VALUES (?)", id)
 					return err
 				}); err != nil {
@@ -180,7 +181,7 @@ func checkMutationBatches(t *testing.T, db *sqlx.DB, e *echo.Echo, store *sessio
 		results := make(chan error, 3*mutationWriterCount)
 		for stream := int64(1); stream <= mutationWriterCount; stream++ {
 			go func(stream int64) {
-				results <- w.submit(ctx, stream, func(work context.Context, tx *sqlx.Tx) error {
+				results <- submitTestMutation(w, ctx, stream, func(work context.Context, tx *sqlx.Tx) error {
 					if _, err := tx.ExecContext(work, "INSERT INTO stream_batch_test VALUES (?, 0)", stream); err != nil {
 						return err
 					}
@@ -200,7 +201,7 @@ func checkMutationBatches(t *testing.T, db *sqlx.DB, e *echo.Echo, store *sessio
 		for step := 1; step <= 2; step++ {
 			for stream := int64(1); stream <= mutationWriterCount; stream++ {
 				go func(stream int64, step int) {
-					results <- w.submit(ctx, stream, func(work context.Context, tx *sqlx.Tx) error {
+					results <- submitTestMutation(w, ctx, stream, func(work context.Context, tx *sqlx.Tx) error {
 						var previous int
 						if err := tx.GetContext(work, &previous, "SELECT step FROM stream_batch_test WHERE id=?", stream); err != nil {
 							return err
@@ -251,7 +252,7 @@ func checkMutationBatches(t *testing.T, db *sqlx.DB, e *echo.Echo, store *sessio
 		if err := db.Get(&complete, "SELECT COUNT(*) FROM stream_batch_test WHERE step=2"); err != nil || complete != mutationWriterCount {
 			t.Fatalf("committed stream order: %d %v", complete, err)
 		}
-		if err := w.submit(ctx, 1, func(context.Context, *sqlx.Tx) error { t.Error("closed writer executed mutation"); return nil }); err == nil {
+		if err := submitTestMutation(w, ctx, 1, func(context.Context, *sqlx.Tx) error { t.Error("closed writer executed mutation"); return nil }); err == nil {
 			t.Fatal("closed writer accepted mutation")
 		}
 		t.Log("four streams executed concurrently; each stream preserved order and drained on close")
@@ -266,7 +267,7 @@ func checkMutationBatches(t *testing.T, db *sqlx.DB, e *echo.Echo, store *sessio
 		started := make(chan struct{})
 		first := make(chan error, 1)
 		go func() {
-			first <- writer.submit(ctx, 1, func(work context.Context, tx *sqlx.Tx) error {
+			first <- submitTestMutation(writer, ctx, 1, func(work context.Context, tx *sqlx.Tx) error {
 				// An empty indexed DELETE must not gap-lock unrelated streams.
 				if _, err := tx.ExecContext(work, "DELETE FROM livecomments WHERE livestream_id=1"); err != nil {
 					return err
@@ -327,4 +328,13 @@ func waitMutationQueue(t *testing.T, w *mutationWriter, stream int64, count int)
 		}
 		time.Sleep(time.Millisecond)
 	}
+}
+
+// Arbitrary barriers exist only in tests to hold, fail, and observe transactions.
+type mutationFunc func(context.Context, *sqlx.Tx) error
+
+func (mutationFunc) mutationOperation()                             {}
+func (f mutationFunc) apply(ctx context.Context, tx *sqlx.Tx) error { return f(ctx, tx) }
+func submitTestMutation(w *mutationWriter, ctx context.Context, stream int64, f func(context.Context, *sqlx.Tx) error) error {
+	return w.submit(ctx, stream, mutationFunc(f))
 }

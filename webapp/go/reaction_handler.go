@@ -84,22 +84,16 @@ func postReactionHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "failed to decode request")
 	}
 	model := ReactionModel{UserID: userID, LivestreamID: livestreamID, EmojiName: req.EmojiName, CreatedAt: time.Now().Unix()}
-	var response Reaction
-	err = submitMutation(ctx, livestreamID, func(workCtx context.Context, tx *sqlx.Tx) error {
-		result, err := tx.NamedExecContext(workCtx, "INSERT INTO reactions (user_id,livestream_id,emoji_name,created_at) VALUES (:user_id,:livestream_id,:emoji_name,:created_at)", model)
-		if err != nil {
-			return err
-		}
-		model.ID, err = result.LastInsertId()
-		if err != nil {
-			return err
-		}
-		response, err = fillReactionResponse(workCtx, tx, model)
-		return err
-	})
+	response, err := fillReactionResponse(ctx, nil, model)
 	if err != nil {
 		return mutationHTTPError(err)
 	}
+	err = submitMutation(ctx, livestreamID, &reactionMutation{model: &model})
+	if err != nil {
+		return mutationHTTPError(err)
+	}
+	response.ID = model.ID
+	refreshResponseIcons(&response.User, &response.Livestream.Owner)
 	return c.JSON(http.StatusCreated, response)
 }
 
