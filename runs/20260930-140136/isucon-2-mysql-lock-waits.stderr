@@ -1,0 +1,21 @@
+set collector session long_query_time: dial tcp 127.0.0.1:3306: connect: connection refused
+set lock collector session long_query_time: dial tcp 127.0.0.1:3306: connect: connection refused
+MySQL status poll: dial tcp 127.0.0.1:3306: connect: connection refused
+MySQL status poll: dial tcp 127.0.0.1:3306: connect: connection refused
+MySQL status poll: dial tcp 127.0.0.1:3306: connect: connection refused
+MySQL status poll: dial tcp 127.0.0.1:3306: connect: connection refused
+MySQL status poll: dial tcp 127.0.0.1:3306: connect: connection refused
+MySQL status poll: dial tcp 127.0.0.1:3306: connect: connection refused
+MySQL status poll: dial tcp 127.0.0.1:3306: connect: connection refused
+MySQL status poll: dial tcp 127.0.0.1:3306: connect: connection refused
+MySQL status poll: dial tcp 127.0.0.1:3306: connect: connection refused
+MySQL status poll: dial tcp 127.0.0.1:3306: connect: connection refused
+MySQL status poll: dial tcp 127.0.0.1:3306: connect: connection refused
+MySQL status poll: dial tcp 127.0.0.1:3306: connect: connection refused
+MySQL status poll: dial tcp 127.0.0.1:3306: connect: connection refused
+MySQL status poll: dial tcp 127.0.0.1:3306: connect: connection refused
+MySQL status poll: dial tcp 127.0.0.1:3306: connect: connection refused
+MySQL status poll: dial tcp 127.0.0.1:3306: connect: connection refused
+MySQL status poll: dial tcp 127.0.0.1:3306: connect: connection refused
+MySQL status poll: dial tcp 127.0.0.1:3306: connect: connection refused
+MySQL status poll: dial tcp 127.0.0.1:3306: connect: connection refused
