@@ -56,8 +56,12 @@ func TestImprovementsMySQL(t *testing.T) {
 	previous := dbConn
 	dbConn = db
 	defer func() { dbConn = previous }()
-	previousWriter := currentMutations.Swap(newMutationWriter(db))
-	defer func() { currentMutations.Swap(previousWriter).close() }()
+	previousWriter := currentMutations.Swap(nil)
+	defer func() {
+		if store := currentMutations.Swap(previousWriter); store != nil {
+			_ = store.close()
+		}
+	}()
 
 	schema, err := os.ReadFile(os.Getenv("ISUCON_TEST_SCHEMA"))
 	if err != nil {
@@ -131,6 +135,7 @@ UPDATE livecomment_reports SET comment_created_at=livecomment_id;`); err != nil 
 	if err := reloadReferences(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+	resetTestPosts(t, db)
 	e := echo.New()
 	store := sessions.NewCookieStore(secret)
 	e.Use(session.Middleware(store))
@@ -236,6 +241,7 @@ UPDATE livecomment_reports SET comment_created_at=livecomment_id;`); err != nil 
 				want = append(want, int64(i+1001))
 			}
 			body, _ := json.Marshal(ModerateRequest{NGWord: word})
+			resetTestPosts(t, db)
 			if rec := improvementRequest(t, e, store, http.MethodPost, "/api/livestream/3/moderate", string(body), 1); rec.Code != http.StatusBadRequest {
 				t.Fatalf("non-owner moderation: expected 400, got %d", rec.Code)
 			}
@@ -264,7 +270,7 @@ UPDATE livecomment_reports SET comment_created_at=livecomment_id;`); err != nil 
 			}
 		})
 	}
-	t.Run("mutation_batches", func(t *testing.T) { checkMutationBatches(t, db, e, store) })
+	t.Run("durable_posts", func(t *testing.T) { checkDurablePosts(t, db, e, store) })
 
 }
 

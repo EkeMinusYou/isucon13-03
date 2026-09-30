@@ -19,11 +19,16 @@ func measurementHandler(maxSeconds int) http.Handler {
 	mux.Handle("/", profileHandler(maxSeconds))
 	mux.HandleFunc("/debug/sql-pools", func(w http.ResponseWriter, r *http.Request) {
 		stats := dbConn.Stats()
+		var posts map[string]any
+		if store := currentMutations.Load(); store != nil {
+			posts = store.metrics()
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"version":          1,
 			"started_unix_ms":  measurementStarted.UnixMilli(),
 			"captured_unix_ms": time.Now().UnixMilli(),
+			"post_wal":         posts,
 			"pools": []map[string]any{{
 				"database_host": "127.0.0.1", "name": "isupipe", "role": "primary", "shard": 0,
 				"max_open_connections": stats.MaxOpenConnections,

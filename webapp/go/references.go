@@ -183,6 +183,11 @@ func (s *referenceStore) commitLivestream(ctx context.Context, tx *sqlx.Tx, mode
 		close(ref.ready)
 		return err
 	}
+	if err := ensurePostStream(model.ID); err != nil {
+		ref.err = err
+		close(ref.ready)
+		return err
+	}
 	close(ref.ready)
 	return nil
 }

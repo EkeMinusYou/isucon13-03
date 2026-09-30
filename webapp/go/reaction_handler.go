@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -46,18 +45,24 @@ func getReactionsHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "livestream_id in path must be integer")
 	}
 
-	query := "SELECT * FROM reactions WHERE livestream_id = ? ORDER BY created_at DESC"
+	limit := -1
 	if c.QueryParam("limit") != "" {
-		limit, err := strconv.Atoi(c.QueryParam("limit"))
+		limit, err = strconv.Atoi(c.QueryParam("limit"))
 		if err != nil {
 			return echo.NewHTTPError(http.StatusBadRequest, "limit query parameter must be integer")
 		}
-		query += fmt.Sprintf(" LIMIT %d", limit)
+		if limit < 0 {
+			return echo.NewHTTPError(http.StatusNotFound, "failed to get reactions")
+		}
 	}
 
-	reactionModels := []ReactionModel{}
-	if err := dbConn.SelectContext(ctx, &reactionModels, query, livestreamID); err != nil {
-		return echo.NewHTTPError(http.StatusNotFound, "failed to get reactions")
+	store := currentMutations.Load()
+	if store == nil {
+		return postsUnavailable("initialization is required")
+	}
+	_, reactionModels, err := store.timeline(ctx, int64(livestreamID), limit, false)
+	if err != nil {
+		return mutationHTTPError(err)
 	}
 
 	reactions, err := fillReactionResponses(ctx, nil, reactionModels)

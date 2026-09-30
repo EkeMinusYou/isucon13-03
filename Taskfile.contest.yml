@@ -9,6 +9,42 @@
 version: '3'
 
 tasks:
+  deploy-wal-posts:
+    desc: 投稿WALを配布し、DB再作成・公式初期化・再起動後の永続性を確認する
+    preconditions:
+      - sh: test ! -f '{{.RUN_STATE_FILE}}'
+        msg: active benchmark exists
+    cmds:
+      - task: inspect-dns-batching-prereqs
+      - task: gen
+      - task: build
+      - task: db-recreate
+      - task: check-app-deployment
+        vars: { MUTATIONS_SMOKE_PHASE: write }
+      - task: inspect-post-wal
+      - mkdir -p .task
+      - task --silent inspect-writer-data > .task/wal-posts-persisted-before.tsv
+      - task: deploy-app
+      - task: check-app-deployment
+        vars: { MUTATIONS_SMOKE_PHASE: read }
+      - task: inspect-post-wal
+      - task --silent inspect-writer-data > .task/wal-posts-persisted-after.tsv
+      - diff .task/wal-posts-persisted-before.tsv .task/wal-posts-persisted-after.tsv
+      - task: check-role-split
+
+  inspect-post-wal:
+    desc: 投稿をDBへ反映し、WAL世代・反映位置・容量・同期回数を読み取り確認する
+    cmds:
+      - for: { var: APP_HOSTS }
+        cmd: |
+          {{.SSH}} {{.SSH_USER}}@{{.ITEM}} '
+            set -eu
+            curl --fail --silent http://127.0.0.1:{{.LISTEN_PORT}}/api/payment >/dev/null
+            curl --fail --silent http://127.0.0.1:6060/debug/sql-pools
+          '
+      - |
+        {{.SSH}} {{.SSH_USER}}@{{.MYSQL_HOST}} 'sudo mysql -t {{.DB_NAME}} -e "SELECT generation,ready,applied_seq FROM post_wal_state WHERE id=1"'
+
   build-bulk-writes:
     desc: 一括writerと永続化確認用smokeを対象OS/Archへビルドする
     cmds:

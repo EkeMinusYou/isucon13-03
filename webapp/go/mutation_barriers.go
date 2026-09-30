@@ -16,6 +16,7 @@ type moderationMutation struct {
 	userID, livestreamID int64
 	word                 string
 	wordID               *int64
+	deleted              []int64
 }
 
 func (*moderationMutation) mutationOperation() {}
@@ -38,7 +39,11 @@ func (op *moderationMutation) apply(ctx context.Context, tx *sqlx.Tx) error {
 		predicates[i] = "comment COLLATE utf8mb4_general_ci LIKE CONCAT('%', ?, '%')"
 		args = append(args, word)
 	}
-	_, err = tx.ExecContext(ctx, "DELETE FROM livecomments WHERE livestream_id = ? AND ("+strings.Join(predicates, " OR ")+")", args...)
+	predicate := "livestream_id = ? AND (" + strings.Join(predicates, " OR ") + ")"
+	if err := tx.SelectContext(ctx, &op.deleted, "SELECT id FROM livecomments WHERE "+predicate, args...); err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, "DELETE FROM livecomments WHERE "+predicate, args...)
 	return err
 }
 

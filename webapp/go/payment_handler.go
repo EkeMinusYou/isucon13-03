@@ -12,6 +12,9 @@ type PaymentResult struct {
 
 func GetPaymentResult(c echo.Context) error {
 	ctx := c.Request().Context()
+	if err := flushPosts(ctx); err != nil {
+		return mutationHTTPError(err)
+	}
 
 	tx, err := dbConn.BeginTxx(ctx, nil)
 	if err != nil {

@@ -1,5 +1,14 @@
 USE `isupipe`;
 
+-- A projection cursor is committed atomically with the corresponding posts.
+CREATE TABLE post_wal_state (
+  id TINYINT NOT NULL PRIMARY KEY,
+  generation CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  ready BOOLEAN NOT NULL,
+  applied_seq BIGINT UNSIGNED NOT NULL
+) ENGINE=InnoDB;
+INSERT INTO post_wal_state VALUES (1, '', FALSE, 0);
+
 -- ユーザ (配信者、視聴者)
 CREATE TABLE `users` (
   `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,

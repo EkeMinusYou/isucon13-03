@@ -78,7 +78,7 @@ deployments:
         script: |
           set -eu
           sudo chown -R {var:isucon_user}:{var:isucon_user} {var:remote_home}/{var:app_dir} {var:remote_home}/webapp/sql {var:remote_home}/webapp/pdns
-          sudo install -d -o {var:isucon_user} -g {var:isucon_user} -m 0755 /var/lib/isupipe /var/lib/isupipe/icons
+          sudo install -d -o {var:isucon_user} -g {var:isucon_user} -m 0755 /var/lib/isupipe /var/lib/isupipe/icons /var/lib/isupipe/wal
           sudo systemctl daemon-reload
           sudo systemctl restart {var:service}
           sudo systemctl is-active --quiet {var:service}

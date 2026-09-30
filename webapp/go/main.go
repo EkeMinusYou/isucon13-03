@@ -69,8 +69,6 @@ func connectDB(logger echo.Logger) (*sqlx.DB, error) {
 	// MySQL 8.0 does not digest binary-protocol prepared executions.
 	// Let the driver escape parameters so application SQL remains observable.
 	conf.InterpolateParams = true
-	// Bulk VALUES IDs are mapped using one consecutive block per statement.
-	conf.Params = map[string]string{"auto_increment_increment": "1", "auto_increment_offset": "1"}
 
 	if v, ok := os.LookupEnv(networkTypeEnvKey); ok {
 		conf.Net = v
@@ -114,16 +112,14 @@ func connectDB(logger echo.Logger) (*sqlx.DB, error) {
 }
 
 func initializeHandler(c echo.Context) error {
-	currentIcons.lifecycle.Lock()
-	defer currentIcons.lifecycle.Unlock()
+	appLifecycle.Lock()
+	defer appLifecycle.Unlock()
 	if writer := currentMutations.Swap(nil); writer != nil {
 		writer.close()
 	}
-	defer func() {
-		if currentMutations.Load() == nil {
-			currentMutations.Store(newMutationWriter(dbConn))
-		}
-	}()
+	if _, err := dbConn.ExecContext(c.Request().Context(), "UPDATE post_wal_state SET ready=FALSE WHERE id=1"); err != nil {
+		return mutationHTTPError(err)
+	}
 	if out, err := exec.Command("../sql/init.sh").CombinedOutput(); err != nil {
 		c.Logger().Warnf("init.sh failed with err=%s", string(out))
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to initialize: "+err.Error())
@@ -132,7 +128,13 @@ func initializeHandler(c echo.Context) error {
 	if err := reloadTags(c.Request().Context()); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to load tags: "+err.Error())
 	}
-	if err := currentIcons.reset(c.Request().Context()); err != nil {
+	if currentIcons == nil {
+		var err error
+		currentIcons, err = newIconStore(c.Request().Context(), iconDirectory())
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to load icons: "+err.Error())
+		}
+	} else if err := currentIcons.reset(c.Request().Context()); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to reset icons: "+err.Error())
 	}
 	if err := reloadReferences(c.Request().Context()); err != nil {
@@ -142,7 +144,19 @@ func initializeHandler(c echo.Context) error {
 	if err := updateDNS(c.Request().Context(), "/reset", ""); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to initialize DNS: "+err.Error())
 	}
-	currentMutations.Store(newMutationWriter(dbConn))
+	gen, err := createPostGeneration(c.Request().Context(), dbConn, postDirectory())
+	if err != nil {
+		return mutationHTTPError(err)
+	}
+	store, err := openPostStore(c.Request().Context(), dbConn, postDirectory())
+	if err != nil {
+		_, _ = dbConn.Exec("UPDATE post_wal_state SET ready=FALSE WHERE id=1")
+		return mutationHTTPError(err)
+	}
+	currentMutations.Store(store)
+	if err := removeOldPostGenerations(postDirectory(), gen); err != nil {
+		c.Logger().Warnf("remove obsolete WAL: %v", err)
+	}
 	c.Request().Header.Add("Content-Type", "application/json;charset=utf-8")
 	return c.JSON(http.StatusOK, InitializeResponse{
 		Language: "golang",
@@ -164,6 +178,7 @@ func main() {
 	cookieStore.Options.Domain = "*.u.isucon.dev"
 	e.Use(session.Middleware(cookieStore))
 	e.Use(measurementSession)
+	e.Use(applicationLifecycle)
 	// e.Use(middleware.Recover())
 
 	// 初期化
@@ -230,21 +245,27 @@ func main() {
 	}
 	defer conn.Close()
 	dbConn = conn
-	currentMutations.Store(newMutationWriter(conn))
-	defer currentMutations.Load().close()
-	iconDir := os.Getenv("ISUCON_ICON_DIR")
-	if iconDir == "" {
-		iconDir = "/var/lib/isupipe/icons"
-	}
-	currentIcons, err = newIconStore(context.Background(), iconDir)
+	store, err := openPostStore(context.Background(), conn, postDirectory())
 	if err != nil {
-		e.Logger.Fatalf("failed to load icons: %v", err)
+		e.Logger.Fatalf("failed to recover posts: %v", err)
 	}
-	if err := reloadTags(context.Background()); err != nil {
-		e.Logger.Fatalf("failed to load tags: %v", err)
-	}
-	if err := reloadReferences(context.Background()); err != nil {
-		e.Logger.Fatalf("failed to load references: %v", err)
+	currentMutations.Store(store)
+	defer func() {
+		if store := currentMutations.Load(); store != nil {
+			_ = store.close()
+		}
+	}()
+	if store != nil {
+		currentIcons, err = newIconStore(context.Background(), iconDirectory())
+		if err != nil {
+			e.Logger.Fatalf("failed to load icons: %v", err)
+		}
+		if err := reloadTags(context.Background()); err != nil {
+			e.Logger.Fatalf("failed to load tags: %v", err)
+		}
+		if err := reloadReferences(context.Background()); err != nil {
+			e.Logger.Fatalf("failed to load references: %v", err)
+		}
 	}
 	if err := startProfileServer(180); err != nil {
 		e.Logger.Fatalf("failed to start measurement listener: %v", err)

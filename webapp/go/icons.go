@@ -34,6 +34,13 @@ type iconStore struct {
 
 var currentIcons *iconStore
 
+func iconDirectory() string {
+	if dir := os.Getenv("ISUCON_ICON_DIR"); dir != "" {
+		return dir
+	}
+	return "/var/lib/isupipe/icons"
+}
+
 func newIconStore(ctx context.Context, dir string) (*iconStore, error) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, err

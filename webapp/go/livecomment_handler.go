@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -83,22 +82,24 @@ func getLivecommentsHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "livestream_id in path must be integer")
 	}
 
-	query := "SELECT * FROM livecomments WHERE livestream_id = ? ORDER BY created_at DESC"
+	limit := -1
 	if c.QueryParam("limit") != "" {
-		limit, err := strconv.Atoi(c.QueryParam("limit"))
+		limit, err = strconv.Atoi(c.QueryParam("limit"))
 		if err != nil {
 			return echo.NewHTTPError(http.StatusBadRequest, "limit query parameter must be integer")
 		}
-		query += fmt.Sprintf(" LIMIT %d", limit)
+		if limit < 0 {
+			return echo.NewHTTPError(http.StatusInternalServerError, "invalid negative limit")
+		}
 	}
 
-	livecommentModels := []LivecommentModel{}
-	err = dbConn.SelectContext(ctx, &livecommentModels, query, livestreamID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return c.JSON(http.StatusOK, []*Livecomment{})
+	store := currentMutations.Load()
+	if store == nil {
+		return postsUnavailable("initialization is required")
 	}
+	livecommentModels, _, err := store.timeline(ctx, int64(livestreamID), limit, true)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get livecomments: "+err.Error())
+		return mutationHTTPError(err)
 	}
 
 	livecomments, err := fillLivecommentResponses(ctx, nil, livecommentModels)

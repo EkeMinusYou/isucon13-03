@@ -73,6 +73,9 @@ func getUserStatisticsHandler(c echo.Context) error {
 	}
 
 	username := c.Param("username")
+	if err := flushPosts(ctx); err != nil {
+		return mutationHTTPError(err)
+	}
 	// ユーザごとに、紐づく配信について、累計リアクション数、累計ライブコメント数、累計売上金額を算出
 	// また、現在の合計視聴者数もだす
 
@@ -172,6 +175,9 @@ func getLivestreamStatisticsHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "livestream_id in path must be integer")
 	}
 	livestreamID := int64(id)
+	if err := flushPosts(ctx); err != nil {
+		return mutationHTTPError(err)
+	}
 
 	tx, err := dbConn.BeginTxx(ctx, nil)
 	if err != nil {
