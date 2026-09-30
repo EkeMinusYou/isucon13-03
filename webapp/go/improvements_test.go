@@ -1,0 +1,228 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"reflect"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/go-sql-driver/mysql"
+	"github.com/gorilla/sessions"
+	"github.com/jmoiron/sqlx"
+	"github.com/labstack/echo-contrib/session"
+	"github.com/labstack/echo/v4"
+)
+
+// This test creates and removes its own database. It never changes isupipe.
+func TestImprovementsMySQL(t *testing.T) {
+	dsn := os.Getenv("ISUCON_TEST_MYSQL_DSN")
+	if dsn == "" {
+		t.Skip("set ISUCON_TEST_MYSQL_DSN through task check-app-improvements")
+	}
+	config, err := mysql.ParseDSN(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config.DBName = ""
+	config.InterpolateParams = true
+	config.MultiStatements = true
+	admin, err := sqlx.Connect("mysql", config.FormatDSN())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer admin.Close()
+	database := "isupipe_improvements_test_" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	if _, err := admin.Exec("CREATE DATABASE `" + database + "`"); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if _, err := admin.Exec("DROP DATABASE `" + database + "`"); err != nil {
+			t.Errorf("remove test database: %v", err)
+		}
+	}()
+	config.DBName = database
+	db, err := sqlx.Connect("mysql", config.FormatDSN())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	previous := dbConn
+	dbConn = db
+	defer func() { dbConn = previous }()
+	schema, err := os.ReadFile(os.Getenv("ISUCON_TEST_SCHEMA"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(strings.Replace(string(schema), "USE `isupipe`;", "", 1)); err != nil {
+		t.Fatal(err)
+	}
+	var collation string
+	if err := db.Get(&collation, "SELECT @@collation_connection"); err != nil {
+		t.Fatal(err)
+	}
+	if collation != "utf8mb4_general_ci" {
+		t.Fatalf("unexpected driver connection collation: %s", collation)
+	}
+	fixture := `
+INSERT INTO users (id, name, display_name, password, description) VALUES
+ (1, 'alpha', '', '', ''), (2, 'beta', '', '', ''), (3, 'empty', '', '', ''),
+ (4, 'éclair', '', '', ''), (5, 'Ωmega', '', '', '');
+INSERT INTO livestreams (id, user_id, title, description, playlist_url, thumbnail_url, start_at, end_at) VALUES
+ (1, 1, '', '', '', '', 0, 1), (2, 1, '', '', '', '', 0, 1),
+ (3, 2, '', '', '', '', 0, 1), (4, 3, '', '', '', '', 0, 1),
+ (5, 4, '', '', '', '', 0, 1), (6, 5, '', '', '', '', 0, 1);
+INSERT INTO reactions (user_id, livestream_id, emoji_name, created_at) VALUES
+ (1, 1, 'a', 0), (1, 1, 'b', 0), (2, 2, 'c', 0), (1, 3, 'a', 0);
+INSERT INTO livecomments (id, user_id, livestream_id, comment, tip, created_at) VALUES
+ (1, 1, 1, 'first', 2, 0), (2, 2, 1, 'second', 3, 0),
+ (3, 1, 2, 'third', 7, 0), (4, 1, 3, 'fourth', 14, 0);
+INSERT INTO livestream_viewers_history (user_id, livestream_id, created_at) VALUES
+ (1, 1, 0), (2, 1, 0), (3, 2, 0);
+INSERT INTO livecomment_reports (user_id, livestream_id, livecomment_id, created_at) VALUES
+ (1, 1, 1, 0), (2, 1, 2, 0);`
+	if _, err := db.Exec(fixture); err != nil {
+		t.Fatal(err)
+	}
+	e := echo.New()
+	store := sessions.NewCookieStore(secret)
+	e.Use(session.Middleware(store))
+	e.GET("/api/user/:username/statistics", getUserStatisticsHandler)
+	e.GET("/api/livestream/:livestream_id/statistics", getLivestreamStatisticsHandler)
+	e.POST("/api/livestream/:livestream_id/moderate", moderateHandler)
+	e.POST("/api/livestream/:livestream_id/livecomment", postLivecommentHandler)
+
+	checkUser := func(t *testing.T, name string, want UserStatistics) {
+		t.Helper()
+		rec := improvementRequest(t, e, store, http.MethodGet, "/api/user/"+name+"/statistics", "", 1)
+		var got UserStatistics
+		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		if rec.Code != http.StatusOK || got != want {
+			t.Fatalf("user %s: status=%d got=%+v want=%+v body=%s", name, rec.Code, got, want, rec.Body.String())
+		}
+	}
+	checkLivestream := func(t *testing.T, id int64, want LivestreamStatistics) {
+		t.Helper()
+		rec := improvementRequest(t, e, store, http.MethodGet, fmt.Sprintf("/api/livestream/%d/statistics", id), "", 1)
+		var got LivestreamStatistics
+		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		if rec.Code != http.StatusOK || got != want {
+			t.Fatalf("livestream %d: status=%d got=%+v want=%+v body=%s", id, rec.Code, got, want, rec.Body.String())
+		}
+	}
+	t.Run("statistics_ties_empty_and_multiple_children", func(t *testing.T) {
+		checkUser(t, "alpha", UserStatistics{Rank: 2, ViewersCount: 3, TotalReactions: 3, TotalLivecomments: 3, TotalTip: 12, FavoriteEmoji: "c"})
+		checkUser(t, "beta", UserStatistics{Rank: 1, TotalReactions: 1, TotalLivecomments: 1, TotalTip: 14, FavoriteEmoji: "a"})
+		checkUser(t, "empty", UserStatistics{Rank: 5})
+		checkUser(t, "éclair", UserStatistics{Rank: 4})
+		checkUser(t, "Ωmega", UserStatistics{Rank: 3})
+		checkLivestream(t, 1, LivestreamStatistics{Rank: 3, ViewersCount: 2, TotalReactions: 2, TotalReports: 2, MaxTip: 3})
+		checkLivestream(t, 2, LivestreamStatistics{Rank: 2, ViewersCount: 1, TotalReactions: 1, MaxTip: 7})
+		checkLivestream(t, 3, LivestreamStatistics{Rank: 1, TotalReactions: 1, MaxTip: 14})
+		checkLivestream(t, 4, LivestreamStatistics{Rank: 6})
+		checkLivestream(t, 5, LivestreamStatistics{Rank: 5})
+		checkLivestream(t, 6, LivestreamStatistics{Rank: 4})
+		for _, path := range []string{"/api/user/missing/statistics", "/api/livestream/999/statistics"} {
+			if rec := improvementRequest(t, e, store, http.MethodGet, path, "", 1); rec.Code != http.StatusBadRequest {
+				t.Fatalf("%s: expected 400, got %d", path, rec.Code)
+			}
+		}
+	})
+	t.Run("statistics_after_writes", func(t *testing.T) {
+		if _, err := db.Exec("DELETE FROM livecomments WHERE id = 1; INSERT INTO reactions (user_id, livestream_id, emoji_name, created_at) VALUES (1, 1, 'c', 0)"); err != nil {
+			t.Fatal(err)
+		}
+		checkUser(t, "alpha", UserStatistics{Rank: 2, ViewersCount: 3, TotalReactions: 4, TotalLivecomments: 2, TotalTip: 10, FavoriteEmoji: "c"})
+		checkLivestream(t, 1, LivestreamStatistics{Rank: 3, ViewersCount: 2, TotalReactions: 3, TotalReports: 2, MaxTip: 3})
+	})
+	for _, word := range []string{"café", "a_b", "q%r", `slash\_`, ""} {
+		t.Run("moderation_"+word, func(t *testing.T) {
+			if _, err := db.Exec("DELETE FROM ng_words; DELETE FROM livecomments; INSERT INTO ng_words (user_id, livestream_id, word, created_at) VALUES (1, 1, 'legacy', 0)"); err != nil {
+				t.Fatal(err)
+			}
+			comments := []string{"LEGACY", "CAFÉ", "cafe", "safe", "aXb", "a_b", "qZZr", "slash_", "slashX", "other's quote", "😀safe"}
+			want := []int64{}
+			remaining := int64(0)
+			for i, comment := range comments {
+				id := int64(i + 1)
+				if _, err := db.Exec("INSERT INTO livecomments (id, user_id, livestream_id, comment, tip, created_at) VALUES (?, 1, 1, ?, 1, 0), (?, 1, 3, ?, 1, 0)", id, comment, id+1000, comment); err != nil {
+					t.Fatal(err)
+				}
+				matched := false
+				for _, ng := range []string{"legacy", word} {
+					var hit int
+					// Evaluate the original parameter-only predicate as the oracle.
+					if err := db.Get(&hit, `SELECT COUNT(*) FROM (SELECT ? AS text) AS texts INNER JOIN (SELECT CONCAT('%', ?, '%') AS pattern) AS patterns ON texts.text LIKE patterns.pattern`, comment, ng); err != nil {
+						t.Fatal(err)
+					}
+					matched = matched || hit > 0
+				}
+				if !matched {
+					want = append(want, id)
+					remaining++
+				}
+			}
+			for i := range comments {
+				want = append(want, int64(i+1001))
+			}
+			body, _ := json.Marshal(ModerateRequest{NGWord: word})
+			if rec := improvementRequest(t, e, store, http.MethodPost, "/api/livestream/3/moderate", string(body), 1); rec.Code != http.StatusBadRequest {
+				t.Fatalf("non-owner moderation: expected 400, got %d", rec.Code)
+			}
+			rec := improvementRequest(t, e, store, http.MethodPost, "/api/livestream/1/moderate", string(body), 1)
+			if rec.Code != http.StatusCreated {
+				t.Fatalf("moderation: status=%d body=%s", rec.Code, rec.Body.String())
+			}
+			var got []int64
+			if err := db.Select(&got, "SELECT id FROM livecomments ORDER BY id"); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("remaining comments: got=%v want=%v", got, want)
+			}
+			var count int
+			if err := db.Get(&count, "SELECT COUNT(*) FROM ng_words"); err != nil || count != 2 {
+				t.Fatalf("NG words after owner/non-owner requests: count=%d err=%v", count, err)
+			}
+			statsRec := improvementRequest(t, e, store, http.MethodGet, "/api/user/alpha/statistics", "", 1)
+			var stats UserStatistics
+			if err := json.Unmarshal(statsRec.Body.Bytes(), &stats); err != nil || statsRec.Code != http.StatusOK || stats.TotalLivecomments != remaining || stats.TotalTip != remaining {
+				t.Fatalf("statistics after moderation: status=%d stats=%+v remaining=%d err=%v", statsRec.Code, stats, remaining, err)
+			}
+			if rec := improvementRequest(t, e, store, http.MethodPost, "/api/livestream/1/livecomment", `{"comment":"LEGACY","tip":0}`, 1); rec.Code != http.StatusBadRequest {
+				t.Fatalf("post moderated comment: expected 400, got %d body=%s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+func improvementRequest(t *testing.T, e *echo.Echo, store *sessions.CookieStore, method, path, body string, userID int64) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	sess, err := store.New(req, defaultSessionIDKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess.Values[defaultUserIDKey] = userID
+	sess.Values[defaultSessionExpiresKey] = time.Now().Add(time.Minute).Unix()
+	cookieResponse := httptest.NewRecorder()
+	if err := store.Save(req, cookieResponse, sess); err != nil {
+		t.Fatal(err)
+	}
+	for _, cookie := range cookieResponse.Result().Cookies() {
+		req.AddCookie(cookie)
+	}
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	return rec
+}

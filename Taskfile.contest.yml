@@ -9,6 +9,58 @@
 version: '3'
 
 tasks:
+  check-app-improvements:
+    desc: 統計・モデレーションを実MySQLの一時検証DBで確認する（競技DBは変更しない）
+    preconditions:
+      - sh: test ! -f '{{.RUN_STATE_FILE}}'
+        msg: active benchmark exists
+    deps: [build-measurectl]
+    cmds:
+      - '{{.MEASURECTL_DIR}}/measurectl collect check-clean {{.MEASURECTL_REMOTE}}'
+      - mkdir -p .task/app-improvements
+      - cd '{{.APP_DIR}}' && {{.GO_BUILD_ENV}} go test -c -o '{{.ROOT_DIR}}/.task/app-improvements/app.test' .
+      - for: { var: MYSQL_HOSTS }
+        cmd: |
+          {{.SSH}} {{.SSH_USER}}@{{.ITEM}} 'mkdir -p /tmp/isucon-app-improvements'
+          {{.RSYNC}} .task/app-improvements/app.test {{.SSH_USER}}@{{.ITEM}}:/tmp/isucon-app-improvements/app.test
+          {{.RSYNC}} '{{.SQL_DIR}}/{{.SQL_SCHEMA_FILE}}' {{.SSH_USER}}@{{.ITEM}}:/tmp/isucon-app-improvements/schema.sql
+          {{.SSH}} {{.SSH_USER}}@{{.ITEM}} '
+            set -eu
+            test "$(uname -s)" = Linux
+            test "$(uname -m)" = x86_64
+            test "$(curl --fail --silent http://127.0.0.1:6060/debug/profiles/status)" = "{\"cpu\":\"\",\"fgprof\":\"\"}"
+            sudo env ISUCON_TEST_MYSQL_DSN="root@unix(/var/run/mysqld/mysqld.sock)/" \
+              ISUCON_TEST_SCHEMA=/tmp/isucon-app-improvements/schema.sql \
+              /tmp/isucon-app-improvements/app.test -test.v -test.run "^TestImprovementsMySQL$"
+          '
+
+  check-app-deployment:
+    desc: 実行バイナリ・索引・各nginxの認証APIを確認する（ベンチ・計測なし）
+    preconditions:
+      - sh: test ! -f '{{.RUN_STATE_FILE}}'
+        msg: active benchmark exists
+    deps: [build-smoke]
+    vars:
+      BINARY_SHA256:
+        sh: shasum -a 256 '{{.APP_DIR}}/{{.APP_NAME}}' | cut -d ' ' -f 1
+    cmds:
+      - for: { var: MYSQL_HOSTS }
+        cmd: |
+          {{.SSH}} {{.SSH_USER}}@{{.ITEM}} '
+            set -eu
+            pid=$(sudo systemctl show {{.SERVICE}} -p MainPID --value)
+            test "$pid" -gt 0
+            actual=$(sudo sha256sum "/proc/$pid/exe" | cut -d " " -f 1)
+            test "$actual" = "{{.BINARY_SHA256}}"
+            indexes=$(sudo mysql -N -e "SELECT COUNT(DISTINCT TABLE_NAME, INDEX_NAME) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=\"{{.DB_NAME}}\" AND INDEX_NAME LIKE \"idx_%\"")
+            test "$indexes" -eq 11
+            echo "{{.ITEM}}: running binary matches; all 11 indexes exist"
+            sudo mysql -t {{.DB_NAME}} -e "EXPLAIN SELECT * FROM livestream_tags WHERE livestream_id = 1"
+          '
+      - '{{.SSH}} {{.SSH_USER}}@{{.ENTRY_HOST}} ''mkdir -p {{.SMOKE_REMOTE_DIR}}'''
+      - '{{.RSYNC}} {{.SMOKE_TOOL_DIR}}/smoke {{.SSH_USER}}@{{.ENTRY_HOST}}:{{.SMOKE_REMOTE_DIR}}/smoke'
+      - '{{.SSH}} {{.SSH_USER}}@{{.ENTRY_HOST}} ''{{.SMOKE_REMOTE_DIR}}/smoke {{.SMOKE_ARGS}}'''
+
   setup-contest-assets:
     desc: 競技固有の依存サービス資材を取得
     cmds: [{task: setup-pdns}]

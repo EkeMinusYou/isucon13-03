@@ -50,7 +50,8 @@ func main() {
 		if _, err := request(client, http.MethodPost, "/api/login", `{"username":"test001","password":"test"}`); err != nil {
 			log.Fatal(err)
 		}
-		for _, path := range []string{"/api/user/me", "/api/tag", "/api/user/test001", "/api/user/test001/theme", "/api/livestream/search?limit=1", "/api/livestream"} {
+		paths := []string{"/api/user/me", "/api/tag", "/api/user/test001", "/api/user/test001/theme", "/api/livestream/search?limit=1", "/api/livestream", "/api/user/test001/statistics"}
+		for _, path := range paths {
 			data, err := request(client, http.MethodGet, path, "")
 			if err != nil {
 				log.Fatal(err)
@@ -58,9 +59,24 @@ func main() {
 			if !json.Valid(data) {
 				log.Fatalf("%s: invalid JSON", path)
 			}
+			if path == "/api/livestream/search?limit=1" {
+				var livestreams []struct {
+					ID int64 `json:"id"`
+				}
+				if err := json.Unmarshal(data, &livestreams); err != nil || len(livestreams) == 0 {
+					log.Fatalf("%s: expected an initialized livestream", path)
+				}
+				stats, err := request(client, http.MethodGet, fmt.Sprintf("/api/livestream/%d/statistics", livestreams[0].ID), "")
+				if err != nil {
+					log.Fatal(err)
+				}
+				if !json.Valid(stats) {
+					log.Fatal("livestream statistics: invalid JSON")
+				}
+			}
 		}
 		transport.CloseIdleConnections()
-		fmt.Printf("%s: login and six authenticated reads passed\n", addr)
+		fmt.Printf("%s: login and eight authenticated reads passed\n", addr)
 	}
 }
 
