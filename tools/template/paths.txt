@@ -38,6 +38,7 @@ docs/conversation
 docs/official
 docs/role-split.md
 docs/reference-model.md
+docs/dns-batching.md
 etc
 generated
 mysql

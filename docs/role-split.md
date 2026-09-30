@@ -7,12 +7,13 @@
 
 | ホスト | 稼働サービス | 接続先・保存先 |
 | --- | --- | --- |
-| isucon-1 | PowerDNS | isucon-2のisudnsを参照し、Aレコードはisucon-3の公開IPを返す |
-| isucon-2 | MySQL | isupipe・isudnsの共通保存先。内部IPでTCP接続を受ける |
+| isucon-1 | PowerDNS・DNS更新サービス | BIND backendで全ゾーンをメモリに保持。Aレコードはisucon-3の公開IPを返す |
+| isucon-2 | MySQL | isupipeの保存先。内部IPでTCP接続を受ける |
 | isucon-3 | Go・nginx | isucon-2のisupipeへ接続。画像はローカルの/var/lib/isupipe/iconsに保存 |
 
 役割外のGo・nginx・MySQL・PowerDNSは停止・無効化した。
 競技DBはisucon-2で再作成し、isucon-3の公式初期化APIで初期データとDNSゾーンをロードした。
+DNSのメモリ化と同期batchの追加変更は[DNS・書込み改善](dns-batching.md)を参照する。
 isucon-1と3の旧ローカルDBはサービス停止後に利用しない。
 
 ## 構成と操作の正本
@@ -23,11 +24,11 @@ isucon-1と3の旧ローカルDBはサービス停止後に利用しない。
 - `tools/contest/generated/topology.env`：DB接続先とDNSのAレコードの向き先。
 - `tools/contest/generated/remote-users.sql`：localhostユーザーの認証方式と認証情報をDB内で参照し、必要な接続元のユーザーを作成する。認証情報は生成ファイルやログに出力しない。
 - `mysql/mysql.conf.d/zz-topology.cnf`：DBホストの内部IPをlisten先とする設定。
-- 各ホストのPowerDNS接続先、および既存のnginx upstream生成物。
+- DNS更新サービスの環境・初期ゾーン、および既存のnginx upstream生成物。
 
-アプリのsystemd、SQL初期化、DNS初期化は配布された`/home/isucon/topology.env`を読む。
+アプリのsystemdとSQL初期化は配布された`/home/isucon/topology.env`を読む。
 既存の`/home/isucon/env.sh`にある認証情報は配布・上書きしない。
-PowerDNSの起動時処理も同じ向き先を使い、既存ゾーンがあれば書き換えない。
+DNS更新サービスは`/etc/powerdns/isupipe-dns.env`を読み、保存済みのゾーンを起動時に復元する。
 
 ```sh
 task deploy-role-split-dry

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"os/exec"
 	"time"
 
 	"github.com/google/uuid"
@@ -122,6 +121,10 @@ func registerHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "the username 'pipe' is reserved")
 	}
 
+	if !validDNSUser(req.Name) {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid DNS name")
+	}
+
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcryptDefaultCost)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to generate hashed password: "+err.Error())
@@ -165,16 +168,16 @@ func registerHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get user theme id: "+err.Error())
 	}
 
-	if out, err := exec.Command("pdnsutil", "add-record", "u.isucon.dev", req.Name, "A", "0", powerDNSSubdomainAddress).CombinedOutput(); err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, string(out)+": "+err.Error())
-	}
-
 	user := User{
 		ID: userID, Name: req.Name, DisplayName: req.DisplayName, Description: req.Description,
 		Theme: Theme{ID: themeID, DarkMode: req.Theme.DarkMode}, IconHash: currentIcons.fallbackHash,
 	}
 	if err := currentReferences.Load().commitUser(tx, user); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to commit: "+err.Error())
+	}
+
+	if err := updateDNS(ctx, "/register", req.Name); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to publish DNS: "+err.Error())
 	}
 
 	return c.JSON(http.StatusCreated, user)

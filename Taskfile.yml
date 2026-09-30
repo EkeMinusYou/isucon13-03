@@ -33,8 +33,7 @@ vars:
     webapp/sql/initial_tags.sql webapp/sql/initial_livestream_tags.sql
     webapp/sql/initial_reservation_slots.sql webapp/sql/initial_reactions.sql
     webapp/sql/initial_ngwords.sql webapp/sql/initial_livecomments.sql
-    webapp/pdns/init_zone.sh webapp/pdns/u.isucon.dev.zone
-    webapp/sql/schema/pdns.sql
+    webapp/pdns/u.isucon.dev.zone
     tools/contest/generated/remote-users.sql
   # Adapt these reset assets and endpoint to the acquired official implementation.
   SQL_DIR: webapp/sql
@@ -42,7 +41,7 @@ vars:
   INITIALIZE_PATH: /api/initialize
   CONFIG_CHECK_COMMAND: 'task config-check && task config-check-pdns'
   SETUP_SECRET_ALLOWLIST: ''
-  MANAGED_SERVICES: '{{.SERVICE}},nginx,mysql,pdns'
+  MANAGED_SERVICES: '{{.SERVICE}},nginx,mysql,pdns,isupipe-dns'
   # <<< contest values <<<
 
   SSH_USER: ubuntu
@@ -74,6 +73,7 @@ vars:
   APP_TRAFFIC_HOSTS: isucon-3
   NGINX_HOSTS: isucon-3
   PDNS_HOSTS: isucon-1
+  DNS_CONTROL_PORT: '8053'
   PDNS_IP: '{{index .IP (splitList " " .PDNS_HOSTS | first)}}'
   DNS_RECORD_ADDRESS: '{{index .PUBLIC_IP (splitList " " .NGINX_HOSTS | first)}}'
   # MYSQL_HOST is the detailed measurement source and default DB connection.

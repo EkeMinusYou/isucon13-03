@@ -56,6 +56,9 @@ func TestImprovementsMySQL(t *testing.T) {
 	previous := dbConn
 	dbConn = db
 	defer func() { dbConn = previous }()
+	previousWriter := currentMutations.Swap(newMutationWriter(db))
+	defer func() { currentMutations.Swap(previousWriter).close() }()
+
 	schema, err := os.ReadFile(os.Getenv("ISUCON_TEST_SCHEMA"))
 	if err != nil {
 		t.Fatal(err)
@@ -85,8 +88,8 @@ INSERT INTO livecomments (id, user_id, livestream_id, comment, tip, created_at) 
  (3, 1, 2, 'third', 7, 0), (4, 1, 3, 'fourth', 14, 0);
 INSERT INTO livestream_viewers_history (user_id, livestream_id, created_at) VALUES
  (1, 1, 0), (2, 1, 0), (3, 2, 0);
-INSERT INTO livecomment_reports (user_id, livestream_id, livecomment_id, created_at) VALUES
- (1, 1, 1, 0), (2, 1, 2, 0);`
+INSERT INTO livecomment_reports (user_id,livestream_id,livecomment_id,created_at,comment_user_id,comment_livestream_id,comment,comment_tip,comment_created_at)
+ SELECT user_id,livestream_id,id,0,user_id,livestream_id,comment,tip,created_at FROM livecomments WHERE id IN (1,2);`
 	if _, err := db.Exec(fixture); err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +101,8 @@ INSERT INTO themes (id, user_id, dark_mode) VALUES
 INSERT INTO tags (id,name) VALUES (1,'tag-a'), (2,'tag-b');
 INSERT INTO livestream_tags (livestream_id,tag_id) VALUES (1,2), (1,1), (2,2), (1,2);
 UPDATE livecomments SET created_at=id;
-UPDATE reactions SET created_at=id;`); err != nil {
+UPDATE reactions SET created_at=id;
+UPDATE livecomment_reports SET comment_created_at=livecomment_id;`); err != nil {
 		t.Fatal(err)
 	}
 	if err := reloadTags(context.Background()); err != nil {
@@ -144,6 +148,9 @@ UPDATE reactions SET created_at=id;`); err != nil {
 	e.GET("/api/livestream/:livestream_id/reaction", getReactionsHandler)
 	e.GET("/api/livestream/:livestream_id/report", getLivecommentReportsHandler)
 	e.POST("/api/livestream/:livestream_id/reaction", postReactionHandler)
+	e.POST("/api/livestream/:livestream_id/livecomment/:livecomment_id/report", reportLivecommentHandler)
+	e.POST("/api/livestream/:livestream_id/enter", enterLivestreamHandler)
+	e.DELETE("/api/livestream/:livestream_id/exit", exitLivestreamHandler)
 	e.POST("/api/livestream/reservation", reserveLivestreamHandler)
 	e.GET("/api/user/:username/icon", getIconHandler)
 	e.POST("/api/icon", postIconHandler)
@@ -257,6 +264,8 @@ UPDATE reactions SET created_at=id;`); err != nil {
 			}
 		})
 	}
+	t.Run("mutation_batches", func(t *testing.T) { checkMutationBatches(t, db, e, store) })
+
 }
 
 func improvementRequest(t *testing.T, e *echo.Echo, store *sessions.CookieStore, method, path, body string, userID int64) *httptest.ResponseRecorder {

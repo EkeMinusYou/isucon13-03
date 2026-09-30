@@ -186,42 +186,19 @@ func fillReactionResponses(ctx context.Context, tx *sqlx.Tx, models []ReactionMo
 
 func fillLivecommentReportResponses(ctx context.Context, tx *sqlx.Tx, models []*LivecommentReportModel) ([]LivecommentReport, error) {
 	result := make([]LivecommentReport, len(models))
-	if len(models) == 0 {
-		return result, nil
-	}
-	commentIDs := make([]int64, len(models))
-	userIDs := make([]int64, 0, len(models)*2)
-	for i, model := range models {
-		commentIDs[i] = model.LivecommentID
-		userIDs = append(userIDs, model.UserID)
-	}
-	query, args, err := sqlx.In("SELECT * FROM livecomments WHERE id IN (?)", uniqueIDs(commentIDs))
-	if err != nil {
-		return nil, err
-	}
-	var comments []LivecommentModel
-	if err := tx.SelectContext(ctx, &comments, query, args...); err != nil {
-		return nil, err
-	}
-	byID := make(map[int64]LivecommentModel, len(comments))
-	ids := make([]int64, 0, len(comments))
-	for _, comment := range comments {
-		byID[comment.ID] = comment
-		ids = append(ids, comment.LivestreamID)
-		userIDs = append(userIDs, comment.UserID)
+	users := make([]int64, 0, len(models)*2)
+	streams := make([]int64, 0, len(models))
+	for _, m := range models {
+		users = append(users, m.UserID, m.CommentUserID)
+		streams = append(streams, m.CommentLivestreamID)
 	}
 	b := newResponseBuilder(ctx)
-	if err := b.loadLivestreamIDs(ids, userIDs); err != nil {
+	if err := b.loadLivestreamIDs(streams, users); err != nil {
 		return nil, err
 	}
-	for i, model := range models {
-		comment, ok := byID[model.LivecommentID]
-		if !ok {
-			return nil, sql.ErrNoRows
-		}
-		result[i] = LivecommentReport{
-			ID: model.ID, Reporter: b.users[model.UserID], Livecomment: b.livecomment(comment), CreatedAt: model.CreatedAt,
-		}
+	for i, m := range models {
+		comment := LivecommentModel{ID: m.LivecommentID, UserID: m.CommentUserID, LivestreamID: m.CommentLivestreamID, Comment: m.Comment, Tip: m.CommentTip, CreatedAt: m.CommentCreatedAt}
+		result[i] = LivecommentReport{ID: m.ID, Reporter: b.users[m.UserID], Livecomment: b.livecomment(comment), CreatedAt: m.CreatedAt}
 	}
 	return result, nil
 }

@@ -6,19 +6,3 @@ PREPARE app_user FROM @app_user_sql;
 EXECUTE app_user;
 DEALLOCATE PREPARE app_user;
 GRANT ALL PRIVILEGES ON isupipe.* TO 'isucon'@'172.31.41.146';
-
-SELECT CONCAT('CREATE USER IF NOT EXISTS ', QUOTE(User), '@', QUOTE('172.31.40.191'),
-              ' IDENTIFIED WITH ', plugin, ' AS ', QUOTE(authentication_string)) INTO @dns_user_sql
-FROM mysql.user WHERE User = 'isudns' AND Host = 'localhost';
-PREPARE dns_user FROM @dns_user_sql;
-EXECUTE dns_user;
-DEALLOCATE PREPARE dns_user;
-GRANT ALL PRIVILEGES ON isudns.* TO 'isudns'@'172.31.40.191';
-
-SELECT CONCAT('CREATE USER IF NOT EXISTS ', QUOTE(User), '@', QUOTE('172.31.41.146'),
-              ' IDENTIFIED WITH ', plugin, ' AS ', QUOTE(authentication_string)) INTO @dns_client_sql
-FROM mysql.user WHERE User = 'isudns' AND Host = 'localhost';
-PREPARE dns_client FROM @dns_client_sql;
-EXECUTE dns_client;
-DEALLOCATE PREPARE dns_client;
-GRANT ALL PRIVILEGES ON isudns.* TO 'isudns'@'172.31.41.146';

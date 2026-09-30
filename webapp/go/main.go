@@ -102,6 +102,7 @@ func connectDB(logger echo.Logger) (*sqlx.DB, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(10)
+	db.SetMaxIdleConns(10)
 
 	if err := db.Ping(); err != nil {
 		return nil, err
@@ -113,6 +114,14 @@ func connectDB(logger echo.Logger) (*sqlx.DB, error) {
 func initializeHandler(c echo.Context) error {
 	currentIcons.lifecycle.Lock()
 	defer currentIcons.lifecycle.Unlock()
+	if writer := currentMutations.Swap(nil); writer != nil {
+		writer.close()
+	}
+	defer func() {
+		if currentMutations.Load() == nil {
+			currentMutations.Store(newMutationWriter(dbConn))
+		}
+	}()
 	if out, err := exec.Command("../sql/init.sh").CombinedOutput(); err != nil {
 		c.Logger().Warnf("init.sh failed with err=%s", string(out))
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to initialize: "+err.Error())
@@ -128,6 +137,10 @@ func initializeHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to load references: "+err.Error())
 	}
 
+	if err := updateDNS(c.Request().Context(), "/reset", ""); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to initialize DNS: "+err.Error())
+	}
+	currentMutations.Store(newMutationWriter(dbConn))
 	c.Request().Header.Add("Content-Type", "application/json;charset=utf-8")
 	return c.JSON(http.StatusOK, InitializeResponse{
 		Language: "golang",
@@ -135,6 +148,12 @@ func initializeHandler(c echo.Context) error {
 }
 
 func main() {
+	if os.Getenv("ISUPIPE_MODE") == "dns-control" {
+		if err := runDNSControl(); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	e := echo.New()
 	e.Debug = true
 	e.Logger.SetLevel(echolog.DEBUG)
@@ -209,6 +228,8 @@ func main() {
 	}
 	defer conn.Close()
 	dbConn = conn
+	currentMutations.Store(newMutationWriter(conn))
+	defer currentMutations.Load().close()
 	iconDir := os.Getenv("ISUCON_ICON_DIR")
 	if iconDir == "" {
 		iconDir = "/var/lib/isupipe/icons"
@@ -234,6 +255,9 @@ func main() {
 	}
 	powerDNSSubdomainAddress = subdomainAddr
 
+	if err := updateDNS(context.Background(), "/generation", ""); err != nil {
+		e.Logger.Fatalf("failed to load DNS generation: %v", err)
+	}
 	// HTTPサーバ起動
 	listenAddr := net.JoinHostPort("", strconv.Itoa(listenPort))
 	if err := e.Start(listenAddr); err != nil {

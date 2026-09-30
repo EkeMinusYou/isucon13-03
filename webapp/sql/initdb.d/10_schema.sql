@@ -90,6 +90,11 @@ CREATE TABLE `livecomment_reports` (
   `user_id` BIGINT NOT NULL,
   `livestream_id` BIGINT NOT NULL,
   `livecomment_id` BIGINT NOT NULL,
+  `comment_user_id` BIGINT NOT NULL,
+  `comment_livestream_id` BIGINT NOT NULL,
+  `comment` TEXT NOT NULL,
+  `comment_tip` BIGINT NOT NULL,
+  `comment_created_at` BIGINT NOT NULL,
   `created_at` BIGINT NOT NULL,
   KEY `idx_reports_livestream` (`livestream_id`)
 ) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;

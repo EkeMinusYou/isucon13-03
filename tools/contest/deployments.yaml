@@ -1,4 +1,4 @@
-# DNS runs on its own host; the application and DNS share one remote MySQL.
+# DNS keeps its complete zone in memory; MySQL stores application state.
 include: [../deployctl/deployments.yaml]
 
 deployments:
@@ -7,13 +7,15 @@ deployments:
       - &topology_env {label: topology environment, role: all, local: tools/contest/generated/topology.env, remote: /home/isucon/topology.env}
       - &pdns_config {label: host-specific PowerDNS configuration, role: all, local: 'etc/hosts/{host}/powerdns/', remote: /etc/powerdns/, delete: true, validate: 'sudo pdns_server --config=check'}
       - &pdns_unit {label: PowerDNS systemd drop-in, role: all, local: etc/systemd/system/pdns.service.d/, remote: /etc/systemd/system/pdns.service.d/}
-      - &zone_boot {label: DNS boot initialization, role: all, local: etc/vendor-scripts/init_zone_once.sh, remote: /usr/local/bin/isupipe-init-zone-once.sh, validate: 'bash -n /usr/local/bin/isupipe-init-zone-once.sh'}
+      - &dns_binary {label: DNS update owner, role: dns, local: '{var:app_dir}/isupipe', remote: /usr/local/bin/isupipe-dns-control}
+      - &dns_owner_unit {label: DNS update unit, role: dns, local: etc/systemd/system/isupipe-dns.service, remote: /etc/systemd/system/isupipe-dns.service}
     activations:
       - label: reload topology units
         role: all
         script: |
           set -eu
-          sudo chmod 0755 /usr/local/bin/isupipe-init-zone-once.sh
+          if [ -f /usr/local/bin/isupipe-dns-control ]; then sudo chmod 0755 /usr/local/bin/isupipe-dns-control; fi
+          sudo rm -f /usr/local/bin/isupipe-init-zone-once.sh
           sudo systemctl daemon-reload
 
   app:
@@ -23,7 +25,6 @@ deployments:
       - &app_sql {label: application initialization SQL, role: app, local: '{var:sql_dir}/', remote: '{var:remote_home}/{var:sql_dir}/', delete: true}
       - &app_zone {label: application DNS initialization assets, role: app, local: webapp/pdns/, remote: '{var:remote_home}/webapp/pdns/', delete: true}
       - {label: application topology environment, role: app, local: tools/contest/generated/topology.env, remote: /home/isucon/topology.env}
-      - {label: application DNS client configuration, role: app, local: 'etc/hosts/{host}/powerdns/', remote: /etc/powerdns/, delete: true, validate: 'sudo pdns_server --config=check'}
     activations: &app_activation
       - label: restart application
         role: app
@@ -50,16 +51,19 @@ deployments:
           test "$(sudo systemctl show {var:service} -p ActiveState --value)" = inactive
 
   pdns-config:
-    uploads: [*topology_env, *pdns_config, *pdns_unit, *zone_boot]
+    uploads: [*topology_env, *pdns_config, *pdns_unit, *dns_binary, *dns_owner_unit]
 
   pdns:
-    uploads: [*topology_env, *pdns_config, *pdns_unit, *zone_boot]
+    uploads: [*topology_env, *pdns_config, *pdns_unit, *dns_binary, *dns_owner_unit]
     activations: &dns_restart
       - label: restart DNS server
         role: dns
         script: |
           set -eu
           sudo systemctl daemon-reload
+          sudo chmod 0755 /usr/local/bin/isupipe-dns-control
+          sudo systemctl enable isupipe-dns
+          sudo systemctl restart isupipe-dns
           sudo systemctl restart pdns
           sudo systemctl is-active --quiet pdns
 
@@ -70,7 +74,7 @@ deployments:
     uploads:
       - {label: remote database users, role: app_db, local: tools/contest/generated/remote-users.sql, remote: /home/isucon/remote-users.sql}
     activations:
-      - label: grant database access to the DNS and application hosts
+      - label: grant database access to the application host
         role: app_db
         script: |
           set -eu
@@ -78,26 +82,26 @@ deployments:
 
   dns-stop:
     activations:
-      - label: stop all DNS database writers
+      - label: stop all DNS writers before reset
         role: all
         script: |
           set -eu
           sudo systemctl stop pdns
           test "$(sudo systemctl show pdns -p MainPID --value)" = 0
           test "$(sudo systemctl show pdns -p ActiveState --value)" = inactive
+          if sudo systemctl cat isupipe-dns >/dev/null 2>&1; then sudo systemctl stop isupipe-dns; fi
 
   db-schema:
     uploads:
-      - {label: SQL and DNS schema assets, role: app_db, local: '{var:sql_dir}/', remote: '{var:remote_home}/{var:sql_dir}/', delete: true}
+      - {label: application schema assets, role: app_db, local: '{var:sql_dir}/', remote: '{var:remote_home}/{var:sql_dir}/', delete: true}
     activations:
-      - label: recreate both shared competition databases
+      - label: recreate application database and remove unused DNS SQL state
         role: app_db
         script: |
           set -eu
           sudo chown -R {var:isucon_user}:{var:isucon_user} {var:remote_home}/webapp/sql
-          sudo mysql -e 'DROP DATABASE IF EXISTS isupipe; CREATE DATABASE isupipe; DROP DATABASE IF EXISTS isudns; CREATE DATABASE isudns;'
+          sudo mysql -e 'DROP DATABASE IF EXISTS isupipe; CREATE DATABASE isupipe; DROP DATABASE IF EXISTS isudns;'
           sudo mysql isupipe < {var:remote_home}/{var:sql_dir}/{var:sql_schema_file}
-          sudo mysql isudns < {var:remote_home}/webapp/sql/schema/pdns.sql
 
   dns-start:
     activations:
@@ -105,6 +109,8 @@ deployments:
         role: dns
         script: |
           set -eu
+          sudo chmod 0755 /usr/local/bin/isupipe-dns-control
+          sudo systemctl enable --now isupipe-dns
           sudo systemctl start pdns
           sudo systemctl is-active --quiet pdns
 
@@ -123,7 +129,7 @@ deployments:
         script: |
           set -eu
           case ',{var:dns_hosts},' in
-            *',{host},'*) sudo systemctl enable --now pdns; sudo systemctl is-active --quiet pdns ;;
+            *',{host},'*) sudo systemctl enable --now isupipe-dns pdns; sudo systemctl is-active --quiet pdns ;;
             *) sudo systemctl disable --now pdns ;;
           esac
 
