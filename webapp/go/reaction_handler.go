@@ -85,7 +85,7 @@ func postReactionHandler(c echo.Context) error {
 	}
 	model := ReactionModel{UserID: userID, LivestreamID: livestreamID, EmojiName: req.EmojiName, CreatedAt: time.Now().Unix()}
 	var response Reaction
-	err = submitMutation(ctx, func(workCtx context.Context, tx *sqlx.Tx) error {
+	err = submitMutation(ctx, livestreamID, func(workCtx context.Context, tx *sqlx.Tx) error {
 		result, err := tx.NamedExecContext(workCtx, "INSERT INTO reactions (user_id,livestream_id,emoji_name,created_at) VALUES (:user_id,:livestream_id,:emoji_name,:created_at)", model)
 		if err != nil {
 			return err

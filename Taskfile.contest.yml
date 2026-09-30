@@ -49,6 +49,36 @@ tasks:
       - task: check-dns-memory
       - task: check-role-split
 
+  inspect-writer-data:
+    desc: 配布前後で比較する競技DBの件数・tipを読み取る
+    cmds:
+      - |
+        {{.SSH}} {{.SSH_USER}}@{{.MYSQL_HOST}} '
+          sudo mysql -N {{.DB_NAME}} -e "
+            SELECT \"users\",COUNT(*) FROM users
+            UNION ALL SELECT \"livestreams\",COUNT(*) FROM livestreams
+            UNION ALL SELECT \"livecomments\",COUNT(*) FROM livecomments
+            UNION ALL SELECT \"reactions\",COUNT(*) FROM reactions
+            UNION ALL SELECT \"reports\",COUNT(*) FROM livecomment_reports
+            UNION ALL SELECT \"ng_words\",COUNT(*) FROM ng_words
+            UNION ALL SELECT \"viewers\",COUNT(*) FROM livestream_viewers_history
+            UNION ALL SELECT \"icons\",COUNT(*) FROM icons
+            UNION ALL SELECT \"total_tip\",COALESCE(SUM(tip),0) FROM livecomments;
+          "
+        '
+
+  deploy-parallel-writers:
+    desc: 配信別writerをGoホストへ配布し、保存済みデータと認証APIを確認する
+    cmds:
+      - task: check-reference-model-prereqs
+      - mkdir -p .task
+      - task --silent inspect-writer-data > .task/parallel-writers-data-before.tsv
+      - task: deploy-app
+      - task: check-app-deployment
+      - task: check-network
+      - task --silent inspect-writer-data > .task/parallel-writers-data-after.tsv
+      - diff .task/parallel-writers-data-before.tsv .task/parallel-writers-data-after.tsv
+
   check-dns-memory:
     desc: DNSのBIND backend・未知名・廃止SQL backendを確認する
     cmds:

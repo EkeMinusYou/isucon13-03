@@ -160,7 +160,7 @@ func postLivecommentHandler(c echo.Context) error {
 	}
 	model := LivecommentModel{UserID: userID, LivestreamID: livestreamID, Comment: req.Comment, Tip: req.Tip, CreatedAt: time.Now().Unix()}
 	var response Livecomment
-	err = submitMutation(ctx, func(workCtx context.Context, tx *sqlx.Tx) error {
+	err = submitMutation(ctx, livestreamID, func(workCtx context.Context, tx *sqlx.Tx) error {
 		var spam bool
 		query := `SELECT EXISTS(SELECT 1 FROM ng_words WHERE user_id = ? AND livestream_id = ? AND CONVERT(? USING utf8mb4) COLLATE utf8mb4_general_ci LIKE CONCAT('%', word COLLATE utf8mb4_general_ci, '%'))`
 		if err := tx.GetContext(workCtx, &spam, query, ref.model.UserID, livestreamID, model.Comment); err != nil {
@@ -205,7 +205,7 @@ func reportLivecommentHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusNotFound, "livestream not found")
 	}
 	var response LivecommentReport
-	err = submitMutation(ctx, func(workCtx context.Context, tx *sqlx.Tx) error {
+	err = submitMutation(ctx, livestreamID, func(workCtx context.Context, tx *sqlx.Tx) error {
 		var comment LivecommentModel
 		if err := tx.GetContext(workCtx, &comment, "SELECT * FROM livecomments WHERE id = ?", commentID); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
@@ -252,7 +252,7 @@ func moderateHandler(c echo.Context) error {
 	}
 	var wordID int64
 	word := req.NGWord
-	err = submitMutation(ctx, func(workCtx context.Context, tx *sqlx.Tx) error {
+	err = submitMutation(ctx, livestreamID, func(workCtx context.Context, tx *sqlx.Tx) error {
 		result, err := tx.ExecContext(workCtx, "INSERT INTO ng_words(user_id,livestream_id,word,created_at) VALUES (?,?,?,?)", userID, livestreamID, word, time.Now().Unix())
 		if err != nil {
 			return err

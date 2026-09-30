@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"net/http"
@@ -13,6 +14,8 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+const mutationWriterCount = 4
+
 type mutationRequest struct {
 	ctx   context.Context
 	apply func(context.Context, *sqlx.Tx) error
@@ -21,8 +24,8 @@ type mutationRequest struct {
 
 type mutationWriter struct {
 	db         *sqlx.DB
-	queue      chan mutationRequest
-	done       chan struct{}
+	queues     [mutationWriterCount]chan mutationRequest
+	workers    sync.WaitGroup
 	mu         sync.RWMutex
 	closed     bool
 	commits    atomic.Uint64
@@ -32,20 +35,26 @@ type mutationWriter struct {
 var currentMutations atomic.Pointer[mutationWriter]
 
 func newMutationWriter(db *sqlx.DB) *mutationWriter {
-	w := &mutationWriter{db: db, queue: make(chan mutationRequest, 256), done: make(chan struct{})}
-	go w.run()
+	w := &mutationWriter{db: db}
+	for i := range w.queues {
+		w.queues[i] = make(chan mutationRequest, 256/mutationWriterCount)
+		w.workers.Add(1)
+		go w.run(w.queues[i])
+	}
 	return w
 }
 
-func (w *mutationWriter) submit(ctx context.Context, apply func(context.Context, *sqlx.Tx) error) error {
+func (w *mutationWriter) submit(ctx context.Context, livestreamID int64, apply func(context.Context, *sqlx.Tx) error) error {
 	r := mutationRequest{ctx: ctx, apply: apply, done: make(chan error, 1)}
+	// All mutations for a stream use one FIFO, including moderation and reports.
+	queue := w.queues[uint64(livestreamID)%mutationWriterCount]
 	w.mu.RLock()
 	if w.closed {
 		w.mu.RUnlock()
 		return fmt.Errorf("mutation writer is stopped")
 	}
 	select {
-	case w.queue <- r:
+	case queue <- r:
 		w.mu.RUnlock()
 	case <-ctx.Done():
 		w.mu.RUnlock()
@@ -63,21 +72,23 @@ func (w *mutationWriter) close() {
 	w.mu.Lock()
 	if !w.closed {
 		w.closed = true
-		close(w.queue)
+		for _, queue := range w.queues {
+			close(queue)
+		}
 	}
 	w.mu.Unlock()
-	<-w.done
+	w.workers.Wait()
 }
 
-func (w *mutationWriter) run() {
-	defer close(w.done)
-	for first := range w.queue {
+func (w *mutationWriter) run(queue <-chan mutationRequest) {
+	defer w.workers.Done()
+	for first := range queue {
 		batch := []mutationRequest{first}
 		timer := time.NewTimer(time.Millisecond)
 	collect:
 		for len(batch) < 32 {
 			select {
-			case r, ok := <-w.queue:
+			case r, ok := <-queue:
 				if !ok {
 					break collect
 				}
@@ -95,7 +106,9 @@ func (w *mutationWriter) write(batch []mutationRequest) {
 	// A disconnected client must not cancel another request's transaction.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	tx, err := w.db.BeginTxx(ctx, nil)
+	// Stream-local ordering replaces cross-stream range locking.
+	// READ COMMITTED keeps a moderation DELETE from gap-locking another stream's INSERT.
+	tx, err := w.db.BeginTxx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
 		for _, r := range batch {
 			r.done <- err
@@ -139,12 +152,12 @@ func (w *mutationWriter) write(batch []mutationRequest) {
 	}
 }
 
-func submitMutation(ctx context.Context, apply func(context.Context, *sqlx.Tx) error) error {
+func submitMutation(ctx context.Context, livestreamID int64, apply func(context.Context, *sqlx.Tx) error) error {
 	w := currentMutations.Load()
 	if w == nil {
 		return fmt.Errorf("mutation writer is not initialized")
 	}
-	return w.submit(ctx, apply)
+	return w.submit(ctx, livestreamID, apply)
 }
 
 func mutationHTTPError(err error) error {
