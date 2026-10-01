@@ -33,7 +33,7 @@ func TestPostFrames(t *testing.T) {
 	if err != nil || size != int64(len(frame)) || fmt.Sprint(got) != fmt.Sprint(records) {
 		t.Fatalf("roundtrip: %v %d %v", got, size, err)
 	}
-	for _, cut := range []int{1, 7, 8, len(frame) - 1} {
+	for _, cut := range []int{1, 7, 8, postFrameHeaderSize - 1, postFrameHeaderSize, len(frame) - 1} {
 		if _, _, err := readPostFrame(bytes.NewReader(frame[:cut]), 0); !errors.Is(err, io.ErrUnexpectedEOF) {
 			t.Fatalf("partial frame at %d: %v", cut, err)
 		}
@@ -48,16 +48,47 @@ func TestPostFrames(t *testing.T) {
 	}
 }
 
+func TestPreallocatedPostFrames(t *testing.T) {
+	frame, err := encodePostFrame([]postRecord{{Seq: 1, Kind: "reaction", ID: 1, StreamID: 1, Text: "preallocated"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Model every prefix write into the already initialized area, including
+	// complete headers followed by partial payloads and completion footers.
+	for cut := 0; cut < len(frame); cut++ {
+		area := make([]byte, len(frame)+postEndSize)
+		copy(area, frame[:cut])
+		_, _, err := readPostFrame(bytes.NewReader(area), 0)
+		if err == nil && bytes.Equal(area[:len(frame)], frame) {
+			// An unwritten zero suffix can already equal the complete footer.
+			continue
+		}
+		if cut == 0 {
+			if !errors.Is(err, io.EOF) {
+				t.Fatalf("unused area: %v", err)
+			}
+		} else if !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, errPostFrameHeader) && !errors.Is(err, io.EOF) {
+			t.Fatalf("incomplete prefix %d: %v", cut, err)
+		}
+	}
+	bad := append([]byte(nil), frame...)
+	bad[postFrameHeaderSize] ^= 1
+	if _, _, err := readPostFrame(bytes.NewReader(bad), 0); err == nil || errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Fatalf("complete corrupted frame treated as an incomplete tail: %v", err)
+	}
+}
+
 func writerTestStore(t *testing.T) *postStore {
 	t.Helper()
 	file, err := os.CreateTemp(t.TempDir(), "posts")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := writePostBytes(file, []byte(postMagic+"00000000-0000-0000-0000-000000000000")); err != nil {
+	const capacity = 1 << 20
+	if err := initializePostFile(context.Background(), file, "00000000-0000-0000-0000-000000000000", capacity); err != nil {
 		t.Fatal(err)
 	}
-	s := &postStore{file: file, syncFile: file.Sync, changed: make(chan struct{}), streams: make(map[int64]*postStream), slots: make(chan struct{}, 256), requests: make(chan postRequest, 256), nextComment: 1, nextReaction: 1}
+	s := &postStore{file: file, capacity: capacity, syncFile: func() error { return syncPostData(file) }, changed: make(chan struct{}), streams: make(map[int64]*postStream), slots: make(chan struct{}, 256), requests: make(chan postRequest, 256), nextComment: 1, nextReaction: 1}
 	s.durableBytes.Store(int64(postHeaderSize))
 	s.appliedBytes.Store(int64(postHeaderSize))
 	t.Cleanup(func() { close(s.requests); s.writers.Wait(); file.Close() })
@@ -206,6 +237,31 @@ func TestPostAppendOverlapsSyncWithoutEarlyAcknowledgement(t *testing.T) {
 	}
 }
 
+func TestPostPreallocatedCapacity(t *testing.T) {
+	s := writerTestStore(t)
+	frame, err := encodePostFrame([]postRecord{{Seq: 1, ID: 1, Kind: "reaction", StreamID: 1, Text: "fits"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.capacity = int64(postHeaderSize + len(frame) + postEndSize)
+	s.writers.Add(1)
+	go s.writePosts()
+	first := &ReactionModel{LivestreamID: 1, EmojiName: "fits"}
+	if err := s.submit(context.Background(), 1, &reactionMutation{model: first}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.submit(context.Background(), 2, &reactionMutation{model: &ReactionModel{LivestreamID: 2, EmojiName: "full"}}); err == nil {
+		t.Fatal("WAL end marker overwritten when capacity was exhausted")
+	}
+	info, err := s.file.Stat()
+	if err != nil || info.Size() != 1<<20 {
+		t.Fatalf("preallocated file changed size: %v %v", info, err)
+	}
+	if err := checkPostZeroTail(s.file, s.durableBytes.Load(), info.Size()); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func resetTestPosts(t *testing.T, db *sqlx.DB) string {
 	t.Helper()
 	if old := currentMutations.Swap(nil); old != nil {
@@ -215,7 +271,7 @@ func resetTestPosts(t *testing.T, db *sqlx.DB) string {
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
-	if _, err := createPostGeneration(context.Background(), db, dir); err != nil {
+	if _, err := createPostGenerationCapacity(context.Background(), db, dir, 1<<20); err != nil {
 		t.Fatal(err)
 	}
 	s, err := openPostStore(context.Background(), db, dir)
@@ -237,6 +293,106 @@ func checkDurablePosts(t *testing.T, db *sqlx.DB, e *echo.Echo, cookies *struct{
 		}
 	}
 	e.GET("/api/payment", GetPaymentResult)
+	t.Run("preallocated_tail_recovery_and_corruption", func(t *testing.T) {
+		for _, name := range []string{"partial_header", "partial_payload", "partial_footer", "header_corruption", "payload_corruption", "data_after_end", "data_after_incomplete", "db_marker_exceeds_tail", "truncated_file"} {
+			t.Run(name, func(t *testing.T) {
+				clearRows()
+				dir := resetTestPosts(t, db)
+				s := currentMutations.Load()
+				posted := &ReactionModel{UserID: 2, LivestreamID: 1, EmojiName: "acknowledged"}
+				if err := s.submit(ctx, 1, &reactionMutation{model: posted}); err != nil {
+					t.Fatal(err)
+				}
+				if err := s.close(); err != nil {
+					t.Fatal(err)
+				}
+				end := s.durableBytes.Load()
+				frame, err := encodePostFrame([]postRecord{{Seq: 2, ID: posted.ID + 1, Kind: "reaction", UserID: 2, StreamID: 1, Text: "unfinished"}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				file, err := os.OpenFile(filepath.Join(dir, s.generation+".wal"), os.O_RDWR, 0640)
+				if err != nil {
+					t.Fatal(err)
+				}
+				data := append([]byte(nil), frame...)
+				position := end
+				expectError := false
+				switch name {
+				case "partial_header":
+					data = data[:3]
+				case "partial_payload":
+					data = data[:postFrameHeaderSize+7]
+				case "partial_footer", "data_after_incomplete":
+					data = data[:len(data)-1]
+					if name == "data_after_incomplete" {
+						if _, err := file.WriteAt(frame, end+int64(len(frame))); err != nil {
+							t.Fatal(err)
+						}
+						expectError = true
+					}
+				case "header_corruption":
+					data[0] ^= 1
+					expectError = true
+				case "payload_corruption":
+					data[postFrameHeaderSize] ^= 1
+					expectError = true
+				case "data_after_end":
+					position += postEndSize
+					expectError = true
+				case "db_marker_exceeds_tail":
+					data = data[:postFrameHeaderSize+7]
+					if _, err := db.Exec("UPDATE post_wal_state SET applied_seq=2 WHERE id=1"); err != nil {
+						t.Fatal(err)
+					}
+					expectError = true
+				case "truncated_file":
+					if err := file.Truncate(s.capacity - 1); err != nil {
+						t.Fatal(err)
+					}
+					data = nil
+					expectError = true
+				}
+				if _, err := file.WriteAt(data, position); err != nil {
+					t.Fatal(err)
+				}
+				if err := file.Sync(); err != nil {
+					t.Fatal(err)
+				}
+				file.Close()
+				recovered, err := openPostStore(ctx, db, dir)
+				if expectError {
+					if err == nil {
+						recovered.close()
+						t.Fatal("corrupted or missing durable data was accepted")
+					}
+					return
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				currentMutations.Store(recovered)
+				if recovered.durableSeq.Load() != 1 || recovered.durableBytes.Load() != end {
+					t.Fatal("incomplete tail was replayed")
+				}
+				if err := checkPostZeroTail(recovered.file, end, recovered.capacity); err != nil {
+					t.Fatal(err)
+				}
+				info, err := recovered.file.Stat()
+				if err != nil || info.Size() != s.capacity {
+					t.Fatalf("recovery removed preallocation: %v %v", info, err)
+				}
+				_, rows, err := recovered.timeline(ctx, 1, -1, false)
+				if err != nil || len(rows) != 1 || rows[0].ID != posted.ID || rows[0].EmojiName != posted.EmojiName {
+					t.Fatalf("acknowledged post lost: %+v %v", rows, err)
+				}
+				next := &ReactionModel{UserID: 2, LivestreamID: 1, EmojiName: "after-tail-recovery"}
+				if err := recovered.submit(ctx, 1, &reactionMutation{model: next}); err != nil || next.ID <= posted.ID {
+					t.Fatalf("cannot append after recovery: %+v %v", next, err)
+				}
+			})
+		}
+	})
 	t.Run("projection_atomicity_and_lost_commit_reply", func(t *testing.T) {
 		clearRows()
 		resetTestPosts(t, db)
@@ -354,11 +510,11 @@ func checkDurablePosts(t *testing.T, db *sqlx.DB, e *echo.Echo, cookies *struct{
 			t.Fatal(err)
 		}
 		// A partial trailing frame cannot resurrect a previously projected deletion.
-		file, err := os.OpenFile(filepath.Join(dir, s.generation+".wal"), os.O_APPEND|os.O_WRONLY, 0640)
+		file, err := os.OpenFile(filepath.Join(dir, s.generation+".wal"), os.O_WRONLY, 0640)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := file.Write([]byte{1, 2, 3}); err != nil {
+		if _, err := file.WriteAt([]byte{1, 2, 3}, s.durableBytes.Load()); err != nil {
 			t.Fatal(err)
 		}
 		file.Close()
@@ -437,7 +593,7 @@ func checkDurablePosts(t *testing.T, db *sqlx.DB, e *echo.Echo, cookies *struct{
 		if _, err := db.Exec("DELETE FROM livecomments; DELETE FROM reactions"); err != nil {
 			t.Fatal(err)
 		}
-		gen, err := createPostGeneration(ctx, db, dir)
+		gen, err := createPostGenerationCapacity(ctx, db, dir, 1<<20)
 		if err != nil {
 			t.Fatal(err)
 		}

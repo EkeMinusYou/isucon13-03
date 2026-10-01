@@ -63,6 +63,7 @@ type postStore struct {
 	db                         *sqlx.DB
 	generation                 string
 	file, reader               *os.File
+	capacity                   int64
 	life                       sync.RWMutex
 	closed                     bool
 	syncFile                   func() error
