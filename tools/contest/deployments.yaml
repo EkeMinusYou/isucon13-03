@@ -1,4 +1,4 @@
-# DNS keeps its complete zone in memory; MySQL stores application state.
+# Go DNS answers from memory and syncs registration deltas; MySQL stores application state.
 include: [../deployctl/deployments.yaml]
 
 deployments:
@@ -47,31 +47,12 @@ deployments:
             *) sudo systemctl disable --now nginx; test "$(sudo systemctl show nginx -p MainPID --value)" = 0 ;;
           esac
 
-  ingress-dns:
-    uploads:
-      - {label: DNS topology environment, role: dns, local: tools/contest/generated/topology.env, remote: /home/isucon/topology.env}
-      - {label: PowerDNS configuration, role: dns, local: 'etc/hosts/{host}/powerdns/', remote: /etc/powerdns/, delete: true, validate: 'sudo pdns_server --config=check'}
-      - {label: PowerDNS systemd drop-in, role: dns, local: etc/systemd/system/pdns.service.d/, remote: /etc/systemd/system/pdns.service.d/}
-      - {label: DNS update owner, role: dns, local: '{var:app_dir}/isupipe', remote: /usr/local/bin/isupipe-dns-control}
-      - {label: DNS update unit, role: dns, local: etc/systemd/system/isupipe-dns.service, remote: /etc/systemd/system/isupipe-dns.service}
-    activations:
-      - label: publish the new ingress while preserving registered names
-        role: dns
-        script: |
-          set -eu
-          sudo chmod 0755 /usr/local/bin/isupipe-dns-control
-          sudo systemctl daemon-reload
-          sudo systemctl restart isupipe-dns
-          sudo systemctl restart pdns
-          sudo systemctl is-active --quiet isupipe-dns pdns
-
   topology-config:
     uploads:
       - &topology_env {label: topology environment, role: all, local: tools/contest/generated/topology.env, remote: /home/isucon/topology.env}
-      - &pdns_config {label: host-specific PowerDNS configuration, role: all, local: 'etc/hosts/{host}/powerdns/', remote: /etc/powerdns/, delete: true, validate: 'sudo pdns_server --config=check'}
-      - &pdns_unit {label: PowerDNS systemd drop-in, role: all, local: etc/systemd/system/pdns.service.d/, remote: /etc/systemd/system/pdns.service.d/}
-      - &dns_binary {label: DNS update owner, role: dns, local: '{var:app_dir}/isupipe', remote: /usr/local/bin/isupipe-dns-control}
-      - &dns_owner_unit {label: DNS update unit, role: dns, local: etc/systemd/system/isupipe-dns.service, remote: /etc/systemd/system/isupipe-dns.service}
+      - &dns_config {label: host-specific Go DNS configuration, role: dns, local: 'etc/hosts/{host}/dns/', remote: /etc/isupipe-dns/, delete: true}
+      - &dns_binary {label: authoritative DNS binary, role: dns, local: '{var:app_dir}/isupipe', remote: /usr/local/bin/isupipe-dns-control}
+      - &dns_owner_unit {label: authoritative DNS unit, role: dns, local: etc/systemd/system/isupipe-dns.service, remote: /etc/systemd/system/isupipe-dns.service}
     activations:
       - label: reload topology units
         role: all
@@ -113,11 +94,8 @@ deployments:
           test "$(sudo systemctl show {var:service} -p MainPID --value)" = 0
           test "$(sudo systemctl show {var:service} -p ActiveState --value)" = inactive
 
-  pdns-config:
-    uploads: [*topology_env, *pdns_config, *pdns_unit, *dns_binary, *dns_owner_unit]
-
-  pdns:
-    uploads: [*topology_env, *pdns_config, *pdns_unit, *dns_binary, *dns_owner_unit]
+  dns:
+    uploads: [*dns_config, *dns_binary, *dns_owner_unit]
     activations: &dns_restart
       - label: restart DNS server
         role: dns
@@ -125,10 +103,17 @@ deployments:
           set -eu
           sudo systemctl daemon-reload
           sudo chmod 0755 /usr/local/bin/isupipe-dns-control
+          sudo systemctl disable --now pdns
+          sudo rm -f /etc/systemd/system/pdns.service.d/isudns.conf
+          sudo systemctl daemon-reload
           sudo systemctl enable isupipe-dns
           sudo systemctl restart isupipe-dns
-          sudo systemctl restart pdns
-          sudo systemctl is-active --quiet pdns
+          sudo systemctl is-active --quiet isupipe-dns
+          curl --fail --silent --show-error {var:dns_control_url}/status | python3 -c 'import json,sys; assert json.load(sys.stdin)["ready"]'
+
+  ingress-dns:
+    uploads: [*dns_config, *dns_binary, *dns_owner_unit]
+    activations: *dns_restart
 
   dns-restart:
     activations: *dns_restart
@@ -149,10 +134,17 @@ deployments:
         role: all
         script: |
           set -eu
-          sudo systemctl stop pdns
+          sudo systemctl disable --now pdns
+          sudo rm -f /etc/systemd/system/pdns.service.d/isudns.conf
+          sudo systemctl daemon-reload
           test "$(sudo systemctl show pdns -p MainPID --value)" = 0
           test "$(sudo systemctl show pdns -p ActiveState --value)" = inactive
           if sudo systemctl cat isupipe-dns >/dev/null 2>&1; then sudo systemctl stop isupipe-dns; fi
+      - label: discard DNS registration state for explicit competition reset
+        role: dns
+        script: |
+          set -eu
+          sudo rm -f /var/lib/isupipe/dns/registrations.wal /var/lib/isupipe/dns/u.isucon.dev.zone
 
   db-schema:
     uploads:
@@ -174,8 +166,9 @@ deployments:
           set -eu
           sudo chmod 0755 /usr/local/bin/isupipe-dns-control
           sudo systemctl enable --now isupipe-dns
-          sudo systemctl start pdns
-          sudo systemctl is-active --quiet pdns
+          sudo systemctl is-active --quiet isupipe-dns
+          curl --fail-with-body --silent --show-error --max-time 10 -X POST {var:dns_control_url}/reset
+          curl --fail --silent --show-error {var:dns_control_url}/status | python3 -c 'import json,sys; assert json.load(sys.stdin)["ready"]'
 
   app-initialize:
     activations:
@@ -191,9 +184,10 @@ deployments:
         role: all
         script: |
           set -eu
+          sudo systemctl disable --now pdns
           case ',{var:dns_hosts},' in
-            *',{host},'*) sudo systemctl enable --now isupipe-dns pdns; sudo systemctl is-active --quiet pdns ;;
-            *) sudo systemctl disable --now pdns ;;
+            *',{host},'*) sudo systemctl enable --now isupipe-dns; sudo systemctl is-active --quiet isupipe-dns ;;
+            *) if sudo systemctl cat isupipe-dns >/dev/null 2>&1; then sudo systemctl disable --now isupipe-dns; fi ;;
           esac
 
 plans:

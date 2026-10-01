@@ -39,6 +39,7 @@ docs/official
 docs/role-split.md
 docs/reference-model.md
 docs/dns-batching.md
+docs/go-dns-design.md
 etc
 generated
 mysql

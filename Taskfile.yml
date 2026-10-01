@@ -39,9 +39,9 @@ vars:
   SQL_DIR: webapp/sql
   SQL_SCHEMA_FILE: initdb.d/10_schema.sql
   INITIALIZE_PATH: /api/initialize
-  CONFIG_CHECK_COMMAND: 'task config-check && task config-check-pdns'
+  CONFIG_CHECK_COMMAND: 'task config-check && task config-check-dns'
   SETUP_SECRET_ALLOWLIST: ''
-  MANAGED_SERVICES: '{{.SERVICE}},nginx,mysql,pdns,isupipe-dns,isupipe-icons'
+  MANAGED_SERVICES: '{{.SERVICE}},nginx,mysql,isupipe-dns,isupipe-icons'
   # <<< contest values <<<
 
   SSH_USER: ubuntu
@@ -76,9 +76,9 @@ vars:
   APP_TRAFFIC_HOSTS: isucon-3
   APP_ORIGIN_IP: '{{index .IP (splitList " " .APP_HOSTS | first)}}'
   NGINX_HOSTS: isucon-1
-  PDNS_HOSTS: isucon-1
+  DNS_HOSTS: isucon-1
   DNS_CONTROL_PORT: '8053'
-  PDNS_IP: '{{index .IP (splitList " " .PDNS_HOSTS | first)}}'
+  DNS_IP: '{{index .IP (splitList " " .DNS_HOSTS | first)}}'
   DNS_RECORD_ADDRESS: '{{index .PUBLIC_IP (splitList " " .NGINX_HOSTS | first)}}'
   # MYSQL_HOST is the detailed measurement source and default DB connection.
   MYSQL_HOST: isucon-2
@@ -86,9 +86,10 @@ vars:
   MYSQL_HOSTS: isucon-2
   CONF_SRC: isucon-3
   DEPLOYCTL_FLAGS: >-
-    -role dns={{splitList " " .PDNS_HOSTS | join ","}}
+    -role dns={{splitList " " .DNS_HOSTS | join ","}}
     -role icon_read={{splitList " " .ICON_READ_HOSTS | join ","}}
-    -var dns_hosts={{splitList " " .PDNS_HOSTS | join ","}}
+    -var dns_hosts={{splitList " " .DNS_HOSTS | join ","}}
+    -var dns_control_url=http://{{.DNS_IP}}:{{.DNS_CONTROL_PORT}}
   SMOKE_ARGS: '-ingress {{$ips := list}}{{range (splitList " " .NGINX_HOSTS)}}{{$ips = append $ips (printf "%s:443" (index $.IP .))}}{{end}}{{join "," $ips}}'
   # <<< contest values <<<
 

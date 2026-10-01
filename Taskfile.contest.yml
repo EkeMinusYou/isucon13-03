@@ -195,12 +195,12 @@ tasks:
         '
 
   inspect-dns-registration-state:
-    desc: DNS世代と登録名を読み取り、入口移設前後で比較する
+    desc: DNS世代・serial・登録件数を読み取り再起動前後で比較する
     cmds:
-      - for: { var: PDNS_HOSTS }
+      - for: { var: DNS_HOSTS }
         cmd: |
           {{.SSH}} {{.SSH_USER}}@{{.ITEM}} '
-            sudo sed -n "/^; ISUPIPE EPOCH /,$ p" /var/lib/isupipe/dns/u.isucon.dev.zone | awk "{print \$1,\$2,\$3,\$4}"
+            curl --fail --silent http://{{.DNS_IP}}:{{.DNS_CONTROL_PORT}}/status | python3 -c "import json,sys; s=json.load(sys.stdin); print(s[\"epoch\"],s[\"serial\"],s[\"dynamic_names\"],s[\"entries\"],s[\"log_bytes\"])"
           '
 
   deploy-nginx-split:
@@ -247,27 +247,52 @@ tasks:
             if sudo systemctl is-active --quiet {{.SERVICE}}; then
               test "$(curl --fail --silent http://127.0.0.1:6060/debug/profiles/status)" = "{\"cpu\":\"\",\"fgprof\":\"\"}"
             fi
-            if [ "{{.ITEM}}" = "{{splitList " " .PDNS_HOSTS | first}}" ]; then
-              test -f /usr/lib/x86_64-linux-gnu/pdns/libbindbackend.so
-              sudo -u pdns pdns_control list >/dev/null
-            fi
           '
 
-  deploy-dns-batching:
-    desc: DNSメモリ化・同期batchを配布し、初期化・更新・サービス再起動後の復元を確認する
+  deploy-go-dns:
+    desc: Go権威DNSと差分ログを配布し、初期化・登録・再起動後の復元を確認する
     cmds:
       - task: inspect-dns-batching-prereqs
+      - task: config-check-dns
+      - task: check-dns-linux
       - task: gen
       - task: build
       - task: db-recreate
       - task: check-app-deployment
-        vars: { ICON_SMOKE_PHASE: write, REGISTRATION_SMOKE_PHASE: write, REFERENCES_SMOKE_PHASE: write }
-      - task: deploy-pdns
-      - task: deploy-app
+        vars: { ICON_SMOKE_PHASE: write, REGISTRATION_SMOKE_PHASE: write }
+      - mkdir -p .task
+      - task --silent inspect-dns-registration-state > .task/go-dns-before.tsv
+      - task: deploy-dns
+      - task --silent inspect-dns-registration-state > .task/go-dns-after.tsv
+      - diff .task/go-dns-before.tsv .task/go-dns-after.tsv
       - task: check-app-deployment
-        vars: { ICON_SMOKE_PHASE: read, REGISTRATION_SMOKE_PHASE: read, REFERENCES_SMOKE_PHASE: read }
-      - task: check-dns-memory
+        vars: { ICON_SMOKE_PHASE: read, REGISTRATION_SMOKE_PHASE: read }
       - task: check-role-split
+      - task: deploy-dns-initialize
+      - task: check-dns-reset
+      - task: check-app-deployment
+      - task: check-icon-read
+
+  deploy-dns-initialize:
+    desc: 公式initializeで競技DB・DNS・アイコンを初期状態に再作成する
+    preconditions:
+      - sh: test ! -f '{{.RUN_STATE_FILE}}'
+        msg: active benchmark exists
+    cmds:
+      - task: deploy-plan
+        vars: { PLAN: fast-paths-initialize }
+
+  check-dns-reset:
+    desc: 公式初期化による動的DNS登録の消去と初期名の保持を確認する
+    cmds:
+      - task: check-dns
+      - for: { var: DNS_HOSTS }
+        cmd: |
+          {{.SSH}} {{.SSH_USER}}@{{.ITEM}} '
+            set -eu
+            curl --fail --silent http://{{.DNS_IP}}:{{.DNS_CONTROL_PORT}}/status | python3 -c "import json,sys; s=json.load(sys.stdin); assert s[\"ready\"] and s[\"dynamic_names\"] == 0 and s[\"log_bytes\"] == 32"
+            dig +time=2 +tries=1 role-split-smoke.u.isucon.dev @127.0.0.1 | grep -q "status: NXDOMAIN"
+          '
 
   inspect-writer-data:
     desc: 配布前後で比較する競技DBの件数・tipを読み取る
@@ -299,22 +324,6 @@ tasks:
       - task --silent inspect-writer-data > .task/parallel-writers-data-after.tsv
       - diff .task/parallel-writers-data-before.tsv .task/parallel-writers-data-after.tsv
 
-  check-dns-memory:
-    desc: DNSのBIND backend・未知名・廃止SQL backendを確認する
-    cmds:
-      - for: { var: PDNS_HOSTS }
-        cmd: |
-          {{.SSH}} {{.SSH_USER}}@{{.ITEM}} '
-            set -eu
-            sudo systemctl is-active --quiet pdns isupipe-dns
-            grep -qx "launch=bind" /etc/powerdns/pdns.conf
-            dig +time=2 +tries=1 unknown-dns-batching-check.u.isucon.dev @127.0.0.1 | grep -q "status: NXDOMAIN"
-            sudo pdns_control bind-domain-status u.isucon.dev
-          '
-      - |
-        {{.SSH}} {{.SSH_USER}}@{{.MYSQL_HOST}} '
-          test "$(sudo mysql -N -e "SELECT COUNT(*) FROM information_schema.SCHEMATA WHERE SCHEMA_NAME=\"isudns\"")" = 0
-        '
 
   check-reference-model-prereqs:
     desc: 参照モデルの変更前に計測停止と対象OS/Archを確認する
@@ -409,7 +418,7 @@ tasks:
     cmds:
       - task: check-roles
       - task: check-network
-      - task: check-pdns
+      - task: check-dns
 
   check-icon-unit:
     desc: 永続アイコン・条件付きGETのローカルrace testを実行する
@@ -504,11 +513,11 @@ tasks:
           '
       - '{{.SSH}} {{.SSH_USER}}@{{.ENTRY_HOST}} ''mkdir -p {{.SMOKE_REMOTE_DIR}}'''
       - '{{.RSYNC}} {{.SMOKE_TOOL_DIR}}/smoke {{.SSH_USER}}@{{.ENTRY_HOST}}:{{.SMOKE_REMOTE_DIR}}/smoke'
-      - '{{.SSH}} {{.SSH_USER}}@{{.ENTRY_HOST}} ''{{.SMOKE_REMOTE_DIR}}/smoke {{.SMOKE_ARGS}} -icons-phase "{{.ICON_SMOKE_PHASE | default ""}}" -registration-phase "{{.REGISTRATION_SMOKE_PHASE | default ""}}" -references-phase "{{.REFERENCES_SMOKE_PHASE | default ""}}" -mutations-phase "{{.MUTATIONS_SMOKE_PHASE | default ""}}" -dns-server {{.PDNS_IP}}:53 -dns-address {{.DNS_RECORD_ADDRESS}}'''
+      - '{{.SSH}} {{.SSH_USER}}@{{.ENTRY_HOST}} ''{{.SMOKE_REMOTE_DIR}}/smoke {{.SMOKE_ARGS}} -icons-phase "{{.ICON_SMOKE_PHASE | default ""}}" -registration-phase "{{.REGISTRATION_SMOKE_PHASE | default ""}}" -references-phase "{{.REFERENCES_SMOKE_PHASE | default ""}}" -mutations-phase "{{.MUTATIONS_SMOKE_PHASE | default ""}}" -dns-server {{.DNS_IP}}:53 -dns-address {{.DNS_RECORD_ADDRESS}}'''
 
   setup-contest-assets:
     desc: 競技固有の依存サービス資材を取得
-    cmds: [{task: setup-pdns}]
+    cmds: [{task: setup-dns}]
 
   prepare-db-assets:
     desc: deployへ載せる前にDB資材を生成・検証する（deploy系のhook、既定は何もしない）
@@ -523,7 +532,7 @@ tasks:
         ISUCON13_MYSQL_DIALCONFIG_ADDRESS={{.MYSQL_IP}}
         ISUCON13_MYSQL_DIALCONFIG_PORT=3306
         ISUCON13_POWERDNS_SUBDOMAIN_ADDRESS={{.DNS_RECORD_ADDRESS}}
-        ISUPIPE_DNS_URL=http://{{.PDNS_IP}}:{{.DNS_CONTROL_PORT}}
+        ISUPIPE_DNS_URL=http://{{.DNS_IP}}:{{.DNS_CONTROL_PORT}}
         ISUPIPE_ICON_READ_IP={{.ICON_READ_IP}}
         ISUPIPE_ICON_READ_LISTEN={{.ICON_READ_IP}}:{{.ICON_READ_PORT}}
         ISUPIPE_ICON_READ_URL=http://{{.ICON_READ_IP}}:{{.ICON_READ_PORT}}
@@ -548,14 +557,15 @@ tasks:
       - |
         cat > tools/contest/generated/dns-control.env <<'ENV'
         ISUPIPE_MODE=dns-control
-        ISUPIPE_DNS_LISTEN={{.PDNS_IP}}:{{.DNS_CONTROL_PORT}}
+        ISUPIPE_DNS_LISTEN={{.DNS_IP}}:{{.DNS_CONTROL_PORT}}
         ISUPIPE_DNS_CLIENTS={{.APP_IPS}}
         ISUCON13_POWERDNS_SUBDOMAIN_ADDRESS={{.DNS_RECORD_ADDRESS}}
         ENV
-      - for: { var: PDNS_HOSTS }
+      - for: { var: DNS_HOSTS }
         cmd: |
-          cp tools/contest/generated/dns-control.env etc/hosts/{{.ITEM}}/powerdns/isupipe-dns.env
-          cp webapp/pdns/u.isucon.dev.zone etc/hosts/{{.ITEM}}/powerdns/u.isucon.dev.zone
+          mkdir -p etc/hosts/{{.ITEM}}/dns
+          cp tools/contest/generated/dns-control.env etc/hosts/{{.ITEM}}/dns/isupipe-dns.env
+          cp webapp/pdns/u.isucon.dev.zone etc/hosts/{{.ITEM}}/dns/u.isucon.dev.zone
       - |
         cat > tools/contest/generated/remote-users.sql <<'SQL'
         -- GENERATED by task gen. Reuse local authentication without exporting credentials.
@@ -568,70 +578,98 @@ tasks:
         GRANT ALL PRIVILEGES ON isupipe.* TO 'isucon'@'{{index .IP (splitList " " .APP_HOSTS | first)}}';
         SQL
 
-  setup-pdns:
-    desc: PowerDNSのホスト別設定・unitと環境を取得
+  setup-dns:
+    desc: Go DNSのホスト別設定・unitと環境を取得
     cmds:
       - for: { var: ALL_HOSTS }
         cmd: |
-          mkdir -p etc/hosts/{{.ITEM}}/powerdns
-          {{.RSYNC}} {{.SSH_USER}}@{{.ITEM}}:/etc/powerdns/ etc/hosts/{{.ITEM}}/powerdns/
+          mkdir -p etc/hosts/{{.ITEM}}
           {{.RSYNC}} {{.SSH_USER}}@{{.ITEM}}:{{.REMOTE_HOME}}/env.sh etc/hosts/{{.ITEM}}/env.sh
-      - mkdir -p etc/systemd/system/pdns.service.d
-      - '{{.RSYNC}} {{.SSH_USER}}@{{.CONF_SRC}}:/lib/systemd/system/pdns.service etc/vendor-units/'
-      - '{{.RSYNC}} {{.SSH_USER}}@{{.CONF_SRC}}:/etc/systemd/system/pdns.service.d/ etc/systemd/system/pdns.service.d/'
+      - for: { var: DNS_HOSTS }
+        cmd: |
+          mkdir -p etc/hosts/{{.ITEM}}/dns
+          {{.RSYNC}} {{.SSH_USER}}@{{.ITEM}}:/etc/isupipe-dns/ etc/hosts/{{.ITEM}}/dns/
+          {{.RSYNC}} {{.SSH_USER}}@{{.ITEM}}:/etc/systemd/system/isupipe-dns.service etc/systemd/system/isupipe-dns.service
 
-  config-check-pdns:
-    desc: PowerDNSを正規配布先へ転送して構文検査（restartなし）
+  config-check-dns:
+    desc: Go DNSの正当性・永続化・初期ゾーンをローカルrace testで検証する
+    dir: '{{.APP_DIR}}'
+    cmds:
+      - go test -race -run '^TestDNS' -count=1 ./...
+
+  check-dns-linux:
+    desc: 実ホストのLinuxで同期・復元・強制終了を検証する（競技DBとDNSには接続しない）
+    cmds:
+      - mkdir -p .task/go-dns
+      - cd '{{.APP_DIR}}' && {{.GO_BUILD_ENV}} go test -c -o '{{.ROOT_DIR}}/.task/go-dns/dns.test' .
+      - for: { var: DNS_HOSTS }
+        cmd: |
+          {{.SSH}} {{.SSH_USER}}@{{.ITEM}} 'mkdir -p /tmp/isucon-go-dns/go /tmp/isucon-go-dns/pdns'
+          {{.RSYNC}} .task/go-dns/dns.test {{.SSH_USER}}@{{.ITEM}}:/tmp/isucon-go-dns/go/dns.test
+          {{.RSYNC}} webapp/pdns/u.isucon.dev.zone {{.SSH_USER}}@{{.ITEM}}:/tmp/isucon-go-dns/pdns/u.isucon.dev.zone
+          {{.SSH}} {{.SSH_USER}}@{{.ITEM}} 'cd /tmp/isucon-go-dns/go && ./dns.test -test.v -test.run "^TestDNS"'
+
+  deploy-dns-dry:
+    desc: Go DNSの転送先とrestartを実行せず表示
+    deps: [build, build-deployctl]
+    cmds:
+      - task: gen
+      - '{{.DEPLOYCTL_DIR}}/deployctl apply dns -dry-run -config {{.DEPLOYCTL_CONFIG}} {{.DEPLOYCTL_COMMON}}'
+
+  deploy-dns:
+    desc: Go DNS設定を配布し、登録ログを保持してDNS役割のホストでrestart
     preconditions:
       - sh: test ! -f '{{.RUN_STATE_FILE}}'
         msg: active benchmark exists
     deps: [build, build-deployctl]
     cmds:
       - task: gen
-      - '{{.DEPLOYCTL_DIR}}/deployctl apply pdns-config -config {{.DEPLOYCTL_CONFIG}} {{.DEPLOYCTL_COMMON}}'
+      - '{{.DEPLOYCTL_DIR}}/deployctl apply dns -config {{.DEPLOYCTL_CONFIG}} {{.DEPLOYCTL_COMMON}}'
 
-  deploy-pdns-dry:
-    desc: PowerDNSの転送先とrestartを実行せず表示
-    deps: [build, build-deployctl]
-    cmds:
-      - task: gen
-      - '{{.DEPLOYCTL_DIR}}/deployctl apply pdns -dry-run -config {{.DEPLOYCTL_CONFIG}} {{.DEPLOYCTL_COMMON}}'
-
-  deploy-pdns:
-    desc: PowerDNS設定を配布し、DNS役割のホストでrestart
-    preconditions:
-      - sh: test ! -f '{{.RUN_STATE_FILE}}'
-        msg: active benchmark exists
-    deps: [build, build-deployctl]
-    cmds:
-      - task: gen
-      - '{{.DEPLOYCTL_DIR}}/deployctl apply pdns -config {{.DEPLOYCTL_CONFIG}} {{.DEPLOYCTL_COMMON}}'
-
-  check-pdns:
-    desc: PowerDNSの役割とDNSが返すHTTP入口を確認
+  check-dns:
+    desc: Go DNSの役割・実行バイナリ・A/NXDOMAIN/NODATAと廃止SQL backendを確認
+    vars:
+      BINARY_SHA256:
+        sh: shasum -a 256 '{{.APP_DIR}}/{{.APP_NAME}}' | cut -d ' ' -f 1
     cmds:
       - for: { var: ALL_HOSTS }
         cmd: |
           {{.SSH}} {{.SSH_USER}}@{{.ITEM}} '
             set -eu
-            case " {{.PDNS_HOSTS}} " in
+            if sudo systemctl is-enabled --quiet pdns || sudo systemctl is-active --quiet pdns; then
+              echo "{{.ITEM}}: PowerDNS must be disabled and inactive" >&2
+              exit 1
+            fi
+            case " {{.DNS_HOSTS}} " in
               *" {{.ITEM}} "*)
-                sudo systemctl is-enabled --quiet pdns
-                sudo systemctl is-active --quiet pdns
                 sudo systemctl is-enabled --quiet isupipe-dns
                 sudo systemctl is-active --quiet isupipe-dns
-                sudo pdns_control list >/dev/null
+                pid=$(sudo systemctl show isupipe-dns -p MainPID --value)
+                actual=$(sudo sha256sum "/proc/$pid/exe" | cut -d " " -f 1)
+                test "$actual" = "{{.BINARY_SHA256}}"
+                curl --fail --silent http://{{.DNS_IP}}:{{.DNS_CONTROL_PORT}}/status | python3 -c "import json,sys; s=json.load(sys.stdin); assert s[\"ready\"] and not s[\"failed\"]; print(s)"
                 answer=$(dig +time=2 +tries=1 +short pipe.u.isucon.dev @127.0.0.1)
                 test "$answer" = "{{.DNS_RECORD_ADDRESS}}"
-                printf "DNS A record: %s\n" "$answer"
+                dig +time=2 +tries=1 +noall +answer pipe.u.isucon.dev @127.0.0.1 | awk "\$2 == 300 && \$4 == \"A\" {found=1} END {exit !found}"
+                dig +time=2 +tries=1 unknown-go-dns-check.u.isucon.dev @127.0.0.1 | grep -q "status: NXDOMAIN"
+                dig +time=2 +tries=1 pipe.u.isucon.dev AAAA @127.0.0.1 | grep -q "ANSWER: 0, AUTHORITY: 1"
+                printf "{{.ITEM}}: Go DNS binary and answers match\n"
                 ;;
               *)
-                ! sudo systemctl is-enabled --quiet pdns
-                ! sudo systemctl is-active --quiet pdns
+                if sudo systemctl cat isupipe-dns >/dev/null 2>&1; then
+                  if sudo systemctl is-enabled --quiet isupipe-dns || sudo systemctl is-active --quiet isupipe-dns; then
+                    echo "{{.ITEM}}: DNS is running outside its role" >&2
+                    exit 1
+                  fi
+                fi
                 echo "{{.ITEM}}: DNS disabled"
                 ;;
             esac
           '
+      - |
+        {{.SSH}} {{.SSH_USER}}@{{.MYSQL_HOST}} '
+          test "$(sudo mysql -N -e "SELECT COUNT(*) FROM information_schema.SCHEMATA WHERE SCHEMA_NAME=\"isudns\"")" = 0
+        '
 
   setup-smoke-probes:
     desc: 閾値を超える短い読み取りSQLでslow logの生成を確認

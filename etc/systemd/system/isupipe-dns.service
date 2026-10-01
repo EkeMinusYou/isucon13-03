@@ -1,5 +1,5 @@
 [Unit]
-Description=ISUPipe DNS zone update owner
+Description=ISUPipe authoritative DNS and durable registration log
 After=network-online.target
 Wants=network-online.target
 
@@ -7,9 +7,11 @@ Wants=network-online.target
 Type=notify
 User=pdns
 Group=pdns
-EnvironmentFile=/etc/powerdns/isupipe-dns.env
+EnvironmentFile=/etc/isupipe-dns/isupipe-dns.env
 ExecStart=/usr/local/bin/isupipe-dns-control
 StateDirectory=isupipe/dns
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 Restart=on-failure
 RestartSec=1
 

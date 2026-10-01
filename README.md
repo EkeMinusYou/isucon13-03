@@ -55,7 +55,7 @@ Goの生成binaryと他言語の取得済み生成物を除外しています。
 実サーバーでの設定構文検査は[取得と構文検査の手引き](tools/setup/README.md)を参照してください。
 
 `MYSQL_HOSTS`と`MYSQL_HOST`はisucon-2を指し、DB設定配布・標準メトリクス・対話DB接続の対象です。
-アプリとPowerDNSはisucon-2の内部IPへ接続します。`PDNS_HOSTS=isucon-1`、HTTP入口とアプリはisucon-3です。
+アプリはisucon-2の内部IPへDB接続します。`DNS_HOSTS=isucon-1`でGo権威DNSとHTTP入口を動かし、アプリはisucon-3です。
 `task gen`が接続先を生成し、ホスト固有の認証情報は既存の`env.sh`に保持します。
 
 取得した`webapp/`、`nginx/`、`mysql/`、`etc/`は最初のbaselineとしてcommitします。
@@ -70,7 +70,8 @@ credentialらしいファイルを検出し、build・test・成果物契約・d
 task deploy          # build + app配布 + restart
 task deploy-nginx    # 設定上書き・nginx -t成功後にreload
 task deploy-mysql    # MySQL設定配布 + restart
-task deploy-pdns     # PowerDNS設定配布 + restart
+task deploy-dns      # Go DNS設定配布 + 登録ログを保持してrestart
+task deploy-go-dns   # Go DNS初回配布 + DB再作成・初期化・登録復元確認
 task deploy-sysctl   # 全ホストへ配布 + sysctl -p
 task deploy-all      # DB・DNS・アプリ・nginxを依存順に反映。DB初期化はしない
 task deploy-role-split # 役割分離・DB再作成・初期化・再起動後の永続性確認
@@ -78,7 +79,7 @@ task db-recreate     # アプリを止め、DBを破棄・再作成して初期�
 task apply-roles     # 役割変更後だけenable/disableを収束
 task check-roles
 task check-network
-task check-pdns
+task check-dns
 ```
 
 サーバーを変更せず実際の転送先・role・activationを確認する場合は、Go Task自身の`--dry`ではなく
