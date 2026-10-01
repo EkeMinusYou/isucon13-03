@@ -2,14 +2,14 @@
 
 2026-10-02。RUN `20261002-002105`の負荷60秒で1号機が103.3／120 core秒、
 2号機が16.0／120 core秒を消費していたため、HTTPS入口を1・2号機へ配置した。
-ベンチマーカーは実行していない。性能と得点の変化は次のユーザー実行RUNで評価する。
+ユーザー実行RUN `20261002-011044`はPASS、スコア366,404から468,312へ27.8%改善した。
 
 ## 配置とDNS
 
 | ホスト | 役割 | DNSのA応答 |
 | --- | --- | --- |
-| isucon-1 | nginx、アイコンreader、権威DNS | 登録済み配信者ドメインは54.250.213.246 |
-| isucon-2 | nginx、アイコンreader、MySQL | 共通ドメインpipe.u.isucon.devは18.177.140.41 |
+| isucon-1 | nginx、アイコンreader、権威DNS、MySQL | 登録済み配信者ドメインは54.250.213.246 |
+| isucon-2 | nginx、アイコンreader | 共通ドメインpipe.u.isucon.devは18.177.140.41 |
 | isucon-3 | Goアプリ、投稿WAL、アイコン画像の永続化 | 両入口から172.31.41.146:8080へ接続 |
 
 DNSの問い合わせ先は1号機。共通ドメインと配信者ドメインでAレコードを1つ返し、
@@ -19,6 +19,46 @@ HostとCookieをそのまま3号機へ送る。書込みの所有者とWALは3�
 配置の正本は`Taskfile.yml`のcontest values。`DNS_COMMON_HOST`が共通ドメインの入口、
 `DNS_RECORD_ADDRESS`が配信者ドメインの入口を指定する。`task gen`は共通の`topology.env`と
 readerのホスト別listen設定を生成する。reader unitは`/home/isucon/icon-read.env`を読む。
+
+## MySQLの再配置
+
+RUN `20261002-011044`の負荷60秒では、1号機54.4／120 core秒、2号機90.1／120 core秒を消費した。
+2号機ではnginxが55.4、readerが6.9、MySQLが24.2 core秒を使い、CPU 80%以上が11／60区間あった。
+共通ドメインの入口とMySQLのCPU競合を減らすため、MySQLを1号機へ移設した。
+
+同RUNの1秒ごとのCPU需要を移し替えた試算では、1号機の平均65.5%・最大76.8%、
+2号機の平均54.9%・最大72.8%となる。処理量・処理コストを固定した試算であり、
+実際のスコアとDNSとのディスク競合は次のユーザー実行RUNで評価する。
+
+`Taskfile.yml`の`MYSQL_HOST`と`MYSQL_HOSTS`を1号機へ変更し、`task gen`でDB接続先と
+MySQLのlisten設定を生成する。計測停止と実ホストのLinux/amd64を確認してから、既存経路を使う。
+
+```sh
+task build
+task db-recreate-dry
+task db-recreate
+task apply-roles
+task check-role-split
+task check-bulk-writes-mysql
+task check-icon-read
+task check-icon-edge
+task check-app-deployment ICON_SMOKE_PHASE=write ICON_EDGE_CHECK=true CROSS_INGRESS_CHECK=true
+```
+
+DB再作成は全ホストのアプリ・DNSを停止し、役割外のMySQLを停止・無効化した後、
+1号機のMySQL設定・接続ユーザー・schemaを反映する。DNS、3号機Go、両readerを起動して
+公式initializeを実行し、`task apply-roles`で1号機MySQLの自動起動も有効にする。
+DB再作成直後は`/api/tag`が503を返すため、この起動経路ではHTTP listenerの200または503を
+確認してinitializeへ進む。通常のアプリdeployは引き続き200応答を待つ。
+
+確認ログは`.task/mysql-relocation-*.log`。Goの処理、両入口のドメイン割当、投稿WALの配置は変更しない。
+
+`task db-recreate`と`task apply-roles`が正常完了し、initializeは約6.2秒で完了した。
+1号機MySQLの稼働・自動起動、2号機MySQLの停止・無効化、3号機からの接続と10索引を確認した。
+両入口の認証API、共通Cookie、双方向のアイコン更新の2秒以内反映、ローカル304も通過した。
+登録・投稿fixtureは共有状態へ一度だけ書き込み、両入口で読取りを確認した。
+1号機MySQLと3号機Goを再起動した後も、ユーザー・DNS・画像・投稿・モデレーション・
+報告snapshot・統計・支払いの読取り比較が通過した。
 
 ## アイコンの整合性
 
@@ -60,4 +100,4 @@ JSON圧縮は今回の実装に含まない。
 
 次のRUNでは得点・投げ銭処理量・視聴完了数に加え、同じ負荷区間の入口別CPU/core秒と
 CPU pressure、Host別処理量・転送量、WAL同期の待ちを比較する。
-ドメイン別のCPU需要は未測定なので、この配置で均等になるとは仮定しない。
+MySQL再配置後のCPU需要と得点は未測定なので、この配置で均等になるとは仮定しない。

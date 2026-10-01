@@ -86,9 +86,9 @@ vars:
   DNS_COMMON_HOST: isucon-2
   DNS_COMMON_ADDRESS: '{{index .PUBLIC_IP .DNS_COMMON_HOST}}'
   # MYSQL_HOST is the detailed measurement source and default DB connection.
-  MYSQL_HOST: isucon-2
+  MYSQL_HOST: isucon-1
   # Deployment and service enable/disable targets; preserve the single-host default.
-  MYSQL_HOSTS: isucon-2
+  MYSQL_HOSTS: isucon-1
   CONF_SRC: isucon-3
   DEPLOYCTL_FLAGS: >-
     -role dns={{splitList " " .DNS_HOSTS | join ","}}

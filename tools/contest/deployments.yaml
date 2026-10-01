@@ -113,7 +113,24 @@ deployments:
 
   app-after-schema:
     uploads: [*app_code, *app_unit, *app_sql, *app_zone]
-    activations: *app_activation
+    activations:
+      - label: restart application and wait for HTTP before initialization
+        role: app
+        script: |
+          set -eu
+          sudo chown -R {var:isucon_user}:{var:isucon_user} {var:remote_home}/{var:app_dir} {var:remote_home}/webapp/sql {var:remote_home}/webapp/pdns
+          sudo install -d -o {var:isucon_user} -g {var:isucon_user} -m 0755 /var/lib/isupipe /var/lib/isupipe/icons /var/lib/isupipe/wal
+          sudo systemctl daemon-reload
+          sudo systemctl restart {var:service}
+          sudo systemctl is-active --quiet {var:service}
+          # A recreated database returns 503 until POST /api/initialize runs.
+          for attempt in $(seq 1 20); do
+            status=$(curl --silent --show-error --max-time 2 --output /dev/null --write-out '%{http_code}' 'http://127.0.0.1:{var:listen_port}/api/tag' || true)
+            case "$status" in 200|503) exit 0 ;; esac
+            sleep 1
+          done
+          echo 'Application HTTP listener did not become available' >&2
+          exit 1
 
   app-stop:
     activations:
