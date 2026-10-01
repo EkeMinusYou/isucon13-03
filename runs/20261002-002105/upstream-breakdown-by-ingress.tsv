@@ -1,0 +1,11 @@
+ingress_host	upstream_addr	upstream_status	cache_status	requests	status_2xx	status_3xx	status_4xx	status_5xx	status_other	response_time_sum_ms	response_time_avg_ms	upstream_time_sum_ms	upstream_time_avg_ms
+isucon-1	172.31.41.146:8080	200	NONE	95128	95128	0	0	0	0	162295.000	1.706	162730.000	1.711
+isucon-1	172.31.41.146:8080	201	NONE	58141	58141	0	0	0	0	231481.000	3.981	224696.000	3.865
+isucon-1	172.31.41.146:8080	400	NONE	3692	0	0	3692	0	0	10184.000	2.758	10012.000	2.712
+isucon-1	172.31.41.146:8080	401	NONE	2	0	0	2	0	0	4.000	2.000	0.000	0.000
+isucon-1	172.31.41.146:8080	404	NONE	1	0	0	1	0	0	1.000	1.000	0.000	0.000
+isucon-1	172.31.41.146:8080	500	NONE	1	0	0	0	1	0	2.000	2.000	4.000	4.000
+isucon-1	172.31.41.146:8080	NONE	NONE	3	0	0	3	0	0	6.000	2.000	12.000	4.000
+isucon-1	NONE	NONE	NONE	209634	0	209634	0	0	0	0.000	0.000	0.000	0.000
+isucon-1	unix:/run/isupipe-icons/http.sock	200	NONE	259	259	0	0	0	0	452.000	1.745	468.000	1.807
+isucon-1	unix:/run/isupipe-icons/http.sock	304	NONE	11414	0	11414	0	0	0	19051.000	1.669	18944.000	1.660
