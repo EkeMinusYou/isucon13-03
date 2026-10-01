@@ -28,10 +28,18 @@ select cast(null as varchar) as run_id, cast(null as varchar) as method,
        cast(null as varchar) as source_artifact where false;
 
 create or replace view isupipe_bench_lines as
+with split_logs as (
+    select run_id, source_artifact, string_split(content, chr(10)) as lines
+    from isupipe_result_logs
+), expanded_lines as (
+    -- Expand in SELECT to avoid a lateral join keyed by the entire log.
+    select run_id, source_artifact, unnest(lines) as line,
+           generate_subscripts(lines, 1) as line_number
+    from split_logs
+)
 select run_id, source_artifact, cast(line_number as bigint) as line_number, line,
        try_cast(regexp_extract(line, '^([0-9]{4}-[0-9]{2}-[0-9]{2}T[^\t ]+)', 1) as timestamptz) as occurred_at
-from isupipe_result_logs,
-     unnest(string_split(content, chr(10))) with ordinality as lines(line, line_number);
+from expanded_lines;
 
 create or replace view bench_errors as
 select run_id, line_number, cast(occurred_at as time) as reported_time,
