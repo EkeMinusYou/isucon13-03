@@ -64,12 +64,13 @@ func getReactionsHandler(c echo.Context) error {
 		return mutationHTTPError(err)
 	}
 
-	reactions, err := fillReactionResponses(ctx, nil, reactionModels)
+	reactions, err := reactionResponseJSON(ctx, reactionModels)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fill reaction: "+err.Error())
 	}
 
-	return c.JSON(http.StatusOK, reactions)
+	defer releaseResponseJSON(reactions)
+	return writeResponseJSON(c, reactions)
 }
 
 func postReactionHandler(c echo.Context) error {

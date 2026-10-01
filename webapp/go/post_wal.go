@@ -27,9 +27,6 @@ const postFrameFooter = "WALDONE3"
 const postFrameFooterSize = len(postFrameFooter) + postFrameHeaderSize
 const postEndSize = postFrameHeaderSize
 
-const postSyncGroupRecords = 4
-const postSyncGroupWait = 500 * time.Microsecond
-
 var postCRC = crc32.MakeTable(crc32.Castagnoli)
 var errPostFrameHeader = errors.New("WAL frame header checksum or size mismatch")
 
@@ -471,11 +468,7 @@ func (s *postStore) appendPostBatch(batch []postRequest) {
 		if err == nil {
 			s.writtenBytes += int64(len(frame))
 			s.writtenSeq = seq
-			if len(s.pending) == 0 {
-				s.pendingSince = time.Now()
-			}
 			s.pending = append(s.pending, postBatch{requests: batch, records: records, end: s.writtenBytes})
-			s.pendingRecords += len(records)
 		}
 		s.walMu.Unlock()
 		if err != nil {
@@ -494,68 +487,27 @@ func (s *postStore) appendPostBatch(batch []postRequest) {
 	}
 }
 
-// Capture only complete frames, keeping the oldest frame's deadline fixed
-// across notifications. A sync group can contain more than the trigger count.
-func (s *postStore) takePostBatches(now time.Time, flush bool) ([]postBatch, time.Duration) {
+// Capture complete frames immediately. Appends made during Sync accumulate
+// for the next group and cannot be acknowledged by the current boundary.
+func (s *postStore) takePostBatches() []postBatch {
 	s.walMu.Lock()
 	defer s.walMu.Unlock()
-	if len(s.pending) == 0 {
-		return nil, 0
-	}
-	wait := s.pendingSince.Add(postSyncGroupWait).Sub(now)
-	if !flush && s.pendingRecords < postSyncGroupRecords && wait > 0 {
-		return nil, wait
-	}
 	batches := s.pending
 	s.pending = nil
-	s.pendingRecords = 0
-	s.pendingSince = time.Time{}
-	return batches, 0
-}
-
-func stopPostTimer(timer *time.Timer) {
-	if !timer.Stop() {
-		select {
-		case <-timer.C:
-		default:
-		}
-	}
+	return batches
 }
 
 func (s *postStore) syncPosts() {
-	timer := time.NewTimer(time.Hour)
-	stopPostTimer(timer)
-	defer stopPostTimer(timer)
 	closing := false
-	var waitStarted time.Time
 	for {
-		flush := closing || s.check() != nil
-		checkedAt := time.Now()
-		batches, wait := s.takePostBatches(checkedAt, flush)
+		batches := s.takePostBatches()
 		if len(batches) == 0 {
 			if closing {
 				return
 			}
-			var deadline <-chan time.Time
-			if wait > 0 {
-				if waitStarted.IsZero() {
-					waitStarted = time.Now()
-					s.groupWaits.Add(1)
-				}
-				timer.Reset(time.Until(checkedAt.Add(wait)))
-				deadline = timer.C
-			}
-			select {
-			case _, ok := <-s.syncWake:
-				closing = !ok
-			case <-deadline:
-			}
-			stopPostTimer(timer)
+			_, ok := <-s.syncWake
+			closing = !ok
 			continue
-		}
-		if !waitStarted.IsZero() {
-			s.groupWaitNanos.Add(uint64(time.Since(waitStarted)))
-			waitStarted = time.Time{}
 		}
 		s.syncPostBatches(batches)
 	}

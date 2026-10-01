@@ -227,16 +227,17 @@ func searchLivestreamsHandler(c echo.Context) error {
 		}
 	}
 
-	livestreams, err := fillLivestreamResponses(ctx, tx, livestreamModels)
+	livestreams, err := livestreamResponseJSON(ctx, livestreamModels)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fill livestream: "+err.Error())
 	}
+	defer releaseResponseJSON(livestreams)
 
 	if err := tx.Commit(); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to commit: "+err.Error())
 	}
 
-	return c.JSON(http.StatusOK, livestreams)
+	return writeResponseJSON(c, livestreams)
 }
 
 func getMyLivestreamsHandler(c echo.Context) error {

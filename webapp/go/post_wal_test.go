@@ -130,94 +130,14 @@ func TestPostSyncPublicationAndCancellation(t *testing.T) {
 	}
 }
 
-func TestPostSyncGroupDeadline(t *testing.T) {
-	s := writerTestStore(t)
-	s.writtenBytes = s.durableBytes.Load()
-	s.syncWake = make(chan struct{}, 1)
-	request := func(stream int64) postRequest {
-		return postRequest{record: postRecord{Kind: "reaction", StreamID: stream, Text: "deadline"}, done: make(chan postResult, 1)}
-	}
-	first, second := request(1), request(2)
-	s.appendPostBatch([]postRequest{first})
-	oldest := time.Unix(1, 0)
-	s.pendingSince = oldest
-	if batches, wait := s.takePostBatches(oldest.Add(100*time.Microsecond), false); len(batches) != 0 || wait != 400*time.Microsecond {
-		t.Fatalf("first frame did not wait for its deadline: %d %s", len(batches), wait)
-	}
-	s.appendPostBatch([]postRequest{second})
-	if !s.pendingSince.Equal(oldest) {
-		t.Fatal("later append extended the collection deadline")
-	}
-	if batches, wait := s.takePostBatches(oldest.Add(400*time.Microsecond), false); len(batches) != 0 || wait != 100*time.Microsecond {
-		t.Fatalf("notification reset the deadline: %d %s", len(batches), wait)
-	}
-	batches, wait := s.takePostBatches(oldest.Add(postSyncGroupWait), false)
-	if len(batches) != 2 || wait != 0 || len(s.pending) != 0 || s.pendingRecords != 0 || !s.pendingSince.IsZero() {
-		t.Fatal("expired collection did not capture and clear both frames")
-	}
-	if s.durableSeq.Load() != 0 {
-		t.Fatal("capturing a group acknowledged it before Sync")
-	}
-	s.syncPostBatches(batches)
-	for i, r := range []postRequest{first, second} {
-		if result := <-r.done; result.err != nil || result.record.ID != int64(i+1) {
-			t.Fatalf("group result: %+v", result)
-		}
-	}
-	if s.syncs.Load() != 1 || s.records.Load() != 2 || s.singleRecordSyncs.Load() != 0 {
-		t.Fatal("frames did not share one durable sync")
-	}
-}
-
-func TestPostSyncGroupThresholdAndDrain(t *testing.T) {
-	for _, tc := range []struct {
-		name  string
-		count int
-		flush bool
-	}{
-		{"threshold", postSyncGroupRecords, false},
-		{"above_threshold", postSyncGroupRecords + 2, false},
-		{"shutdown_drain", 1, true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			s := writerTestStore(t)
-			s.writtenBytes = s.durableBytes.Load()
-			s.syncWake = make(chan struct{}, 1)
-			requests := make([]postRequest, tc.count)
-			for i := range requests {
-				requests[i] = postRequest{record: postRecord{Kind: "reaction", StreamID: int64(i + 1), Text: tc.name}, done: make(chan postResult, 1)}
-				s.appendPostBatch(requests[i : i+1])
-			}
-			oldest := time.Unix(1, 0)
-			s.pendingSince = oldest
-			batches, wait := s.takePostBatches(oldest, tc.flush)
-			if len(batches) != tc.count || wait != 0 {
-				t.Fatalf("ready collection waited or truncated frames: %d %s", len(batches), wait)
-			}
-			s.syncPostBatches(batches)
-			for i, r := range requests {
-				if result := <-r.done; result.err != nil || result.record.ID != int64(i+1) {
-					t.Fatalf("group result: %+v", result)
-				}
-			}
-			if s.syncs.Load() != 1 || s.records.Load() != uint64(tc.count) {
-				t.Fatal("ready collection did not share Sync")
-			}
-		})
-	}
-}
-
-func TestPostSyncGroupTimerAndWakeClosure(t *testing.T) {
+func TestPostSyncWakeClosure(t *testing.T) {
 	for _, closeWake := range []bool{false, true} {
 		t.Run(fmt.Sprintf("closed=%t", closeWake), func(t *testing.T) {
 			s := writerTestStore(t)
 			s.writtenBytes = s.durableBytes.Load()
 			s.syncWake = make(chan struct{}, 1)
-			r := postRequest{record: postRecord{Kind: "reaction", StreamID: 1, Text: "timer"}, done: make(chan postResult, 1)}
+			r := postRequest{record: postRecord{Kind: "reaction", StreamID: 1, Text: "drain"}, done: make(chan postResult, 1)}
 			s.appendPostBatch([]postRequest{r})
-			// Put the deadline in the future to exercise timer waiting without
-			// depending on submillisecond scheduling on the test machine.
-			s.pendingSince = time.Now().Add(20 * time.Millisecond)
 			if closeWake {
 				close(s.syncWake)
 			}
@@ -232,16 +152,13 @@ func TestPostSyncGroupTimerAndWakeClosure(t *testing.T) {
 			select {
 			case result := <-r.done:
 				if result.err != nil || result.record.ID != 1 {
-					t.Fatalf("timer result: %+v", result)
+					t.Fatalf("drain result: %+v", result)
 				}
 			case <-time.After(2 * time.Second):
-				t.Fatal("timer or shutdown left a frame pending")
+				t.Fatal("notification or shutdown left a frame pending")
 			}
 			if s.syncs.Load() != 1 || s.singleRecordSyncs.Load() != 1 || s.durableSeq.Load() != 1 {
 				t.Fatal("singleton was not durably published")
-			}
-			if !closeWake && (s.groupWaits.Load() != 1 || s.groupWaitNanos.Load() == 0) {
-				t.Fatal("collection wait metrics were lost or counted per wake")
 			}
 		})
 	}

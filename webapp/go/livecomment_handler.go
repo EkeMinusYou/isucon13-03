@@ -100,12 +100,13 @@ func getLivecommentsHandler(c echo.Context) error {
 		return mutationHTTPError(err)
 	}
 
-	livecomments, err := fillLivecommentResponses(ctx, nil, livecommentModels)
+	livecomments, err := livecommentResponseJSON(ctx, livecommentModels)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fil livecomments: "+err.Error())
 	}
 
-	return c.JSON(http.StatusOK, livecomments)
+	defer releaseResponseJSON(livecomments)
+	return writeResponseJSON(c, livecomments)
 }
 
 func getNgwords(c echo.Context) error {

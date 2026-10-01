@@ -191,6 +191,20 @@ func checkResponseBatching(t *testing.T, db *sqlx.DB, e *echo.Echo, store *struc
 	if !reflect.DeepEqual(tags.Tags, []Tag{{ID: 1, Name: "reloaded-tag"}, {ID: 2, Name: "tag-b"}}) {
 		t.Fatalf("reloaded tags: %+v", tags)
 	}
+	// Warm serialized references must refresh both nested icons and the catalog.
+	read("/api/livestream/1/livecomment", &comments)
+	read("/api/livestream/1/reaction?limit=1", &reactions)
+	var searched []Livestream
+	read("/api/livestream/search?tag=tag-b", &searched)
+	wantHash := fmt.Sprintf("%x", hash)
+	for _, nested := range []Livestream{comments[0].Livestream, reactions[0].Livestream, searched[1]} {
+		if nested.Owner.IconHash != wantHash || nested.Tags[0].Name != "reloaded-tag" || len(nested.Tags) != 3 {
+			t.Fatalf("serialized reference dependencies changed incorrectly: %+v", nested)
+		}
+	}
+	if comments[1].User.IconHash != wantHash || reactions[0].User.IconHash != wantHash {
+		t.Fatal("serialized author icon was not refreshed")
+	}
 }
 
 func checkReferenceCommits(t *testing.T, db *sqlx.DB) {

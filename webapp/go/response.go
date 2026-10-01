@@ -41,7 +41,7 @@ func reloadTags(ctx context.Context) error {
 	return nil
 }
 
-// A builder reuses reference values within one response; timelines remain in MySQL.
+// A builder reuses reference values within typed responses.
 type responseBuilder struct {
 	ctx         context.Context
 	refs        *referenceStore

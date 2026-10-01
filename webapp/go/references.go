@@ -33,14 +33,16 @@ func (p *referencePublication) wait(ctx context.Context) error {
 
 type userReference struct {
 	referencePublication
-	user User
-	icon *iconEntry
+	user     User
+	icon     *iconEntry
+	response atomic.Pointer[referenceJSON]
 }
 
 type livestreamReference struct {
 	referencePublication
-	model  LivestreamModel
-	tagIDs []int64
+	model    LivestreamModel
+	tagIDs   []int64
+	response atomic.Pointer[referenceJSON]
 }
 
 type referenceStore struct {
