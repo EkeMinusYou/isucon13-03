@@ -1,13 +1,12 @@
 USE `isupipe`;
 
--- A projection cursor is committed atomically with the corresponding posts.
+-- The generation identifies the immutable baseline and its authoritative WAL.
 CREATE TABLE post_wal_state (
   id TINYINT NOT NULL PRIMARY KEY,
   generation CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  ready BOOLEAN NOT NULL,
-  applied_seq BIGINT UNSIGNED NOT NULL
+  ready BOOLEAN NOT NULL
 ) ENGINE=InnoDB;
-INSERT INTO post_wal_state VALUES (1, '', FALSE, 0);
+INSERT INTO post_wal_state VALUES (1, '', FALSE);
 
 -- ユーザ (配信者、視聴者)
 CREATE TABLE `users` (

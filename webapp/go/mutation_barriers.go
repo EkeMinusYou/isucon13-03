@@ -2,13 +2,11 @@ package main
 
 import (
 	"context"
-	"database/sql"
-	"errors"
+	"encoding/json"
 	"net/http"
-	"strings"
 	"time"
+	"unicode/utf8"
 
-	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v4"
 )
 
@@ -16,36 +14,9 @@ type moderationMutation struct {
 	userID, livestreamID int64
 	word                 string
 	wordID               *int64
-	deleted              []int64
 }
 
 func (*moderationMutation) mutationOperation() {}
-func (op *moderationMutation) apply(ctx context.Context, tx *sqlx.Tx) error {
-	result, err := tx.ExecContext(ctx, "INSERT INTO ng_words(user_id,livestream_id,word,created_at) VALUES (?,?,?,?)", op.userID, op.livestreamID, op.word, time.Now().Unix())
-	if err != nil {
-		return err
-	}
-	*op.wordID, err = result.LastInsertId()
-	if err != nil {
-		return err
-	}
-	var words []string
-	if err := tx.SelectContext(ctx, &words, "SELECT word FROM ng_words WHERE livestream_id = ?", op.livestreamID); err != nil {
-		return err
-	}
-	predicates := make([]string, len(words))
-	args := []interface{}{op.livestreamID}
-	for i, word := range words {
-		predicates[i] = "comment COLLATE utf8mb4_general_ci LIKE CONCAT('%', ?, '%')"
-		args = append(args, word)
-	}
-	predicate := "livestream_id = ? AND (" + strings.Join(predicates, " OR ") + ")"
-	if err := tx.SelectContext(ctx, &op.deleted, "SELECT id FROM livecomments WHERE "+predicate, args...); err != nil {
-		return err
-	}
-	_, err = tx.ExecContext(ctx, "DELETE FROM livecomments WHERE "+predicate, args...)
-	return err
-}
 
 type reportMutation struct {
 	userID, livestreamID, commentID int64
@@ -53,30 +24,6 @@ type reportMutation struct {
 }
 
 func (*reportMutation) mutationOperation() {}
-func (op *reportMutation) apply(ctx context.Context, tx *sqlx.Tx) error {
-	var comment LivecommentModel
-	if err := tx.GetContext(ctx, &comment, "SELECT * FROM livecomments WHERE id = ?", op.commentID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return echo.NewHTTPError(http.StatusNotFound, "livecomment not found")
-		}
-		return err
-	}
-	model := LivecommentReportModel{UserID: op.userID, LivestreamID: op.livestreamID, LivecommentID: op.commentID, CreatedAt: time.Now().Unix(), CommentUserID: comment.UserID, CommentLivestreamID: comment.LivestreamID, Comment: comment.Comment, CommentTip: comment.Tip, CommentCreatedAt: comment.CreatedAt}
-	response, err := fillLivecommentReportResponse(ctx, tx, model)
-	if err != nil {
-		return err
-	}
-	result, err := tx.NamedExecContext(ctx, `INSERT INTO livecomment_reports(user_id,livestream_id,livecomment_id,created_at,comment_user_id,comment_livestream_id,comment,comment_tip,comment_created_at) VALUES (:user_id,:livestream_id,:livecomment_id,:created_at,:comment_user_id,:comment_livestream_id,:comment,:comment_tip,:comment_created_at)`, model)
-	if err != nil {
-		return err
-	}
-	response.ID, err = result.LastInsertId()
-	if err != nil {
-		return err
-	}
-	*op.response = response
-	return nil
-}
 
 type viewerMutation struct {
 	userID, livestreamID int64
@@ -84,11 +31,69 @@ type viewerMutation struct {
 }
 
 func (*viewerMutation) mutationOperation() {}
-func (op *viewerMutation) apply(ctx context.Context, tx *sqlx.Tx) error {
-	if op.enter {
-		_, err := tx.ExecContext(ctx, "INSERT INTO livestream_viewers_history (user_id,livestream_id,created_at) VALUES (?,?,?)", op.userID, op.livestreamID, time.Now().Unix())
-		return err
+
+// MySQL evaluates only parameter values, preserving LIKE and collation semantics
+// without reading a lagging projection or performing a durable database write.
+func (s *postStore) matchesNG(ctx context.Context, text string, words []string) (bool, error) {
+	if len(words) == 0 {
+		return false, nil
 	}
-	_, err := tx.ExecContext(ctx, "DELETE FROM livestream_viewers_history WHERE user_id = ? AND livestream_id = ?", op.userID, op.livestreamID)
-	return err
+	payload, err := json.Marshal(words)
+	if err != nil {
+		return false, err
+	}
+	var hit bool
+	err = s.db.GetContext(ctx, &hit, `SELECT EXISTS(SELECT 1 FROM JSON_TABLE(?, '$[*]' COLUMNS(word VARCHAR(255) CHARACTER SET utf8mb4 PATH '$')) AS w WHERE CONVERT(? USING utf8mb4) COLLATE utf8mb4_general_ci LIKE CONCAT('%', w.word COLLATE utf8mb4_general_ci, '%'))`, string(payload), text)
+	return hit, err
+}
+func (s *postStore) prepareModeration(ctx context.Context, state *postStream, op *moderationMutation) (postRecord, error) {
+	if !utf8.ValidString(op.word) || utf8.RuneCountInString(op.word) > 255 {
+		return postRecord{}, echo.NewHTTPError(http.StatusInternalServerError, "NG word exceeds VARCHAR(255)")
+	}
+	state.rowsMu.RLock()
+	words := make([]string, 0, len(state.words)+1)
+	for _, word := range state.words {
+		words = append(words, word.Word)
+	}
+	words = append(words, op.word)
+	type candidate struct {
+		ID   int64  `json:"id"`
+		Text string `json:"text"`
+	}
+	rows := make([]candidate, 0, len(state.comments))
+	for _, row := range state.comments {
+		rows = append(rows, candidate{row.ID, row.Comment})
+	}
+	state.rowsMu.RUnlock()
+	var deleted []int64
+	if len(rows) > 0 {
+		rowJSON, err := json.Marshal(rows)
+		if err != nil {
+			return postRecord{}, err
+		}
+		wordJSON, err := json.Marshal(words)
+		if err != nil {
+			return postRecord{}, err
+		}
+		err = s.db.SelectContext(ctx, &deleted, `SELECT c.id FROM JSON_TABLE(?, '$[*]' COLUMNS(id BIGINT PATH '$.id', text VARCHAR(255) CHARACTER SET utf8mb4 PATH '$.text')) AS c WHERE EXISTS(SELECT 1 FROM JSON_TABLE(?, '$[*]' COLUMNS(word VARCHAR(255) CHARACTER SET utf8mb4 PATH '$')) AS w WHERE c.text COLLATE utf8mb4_general_ci LIKE CONCAT('%',w.word COLLATE utf8mb4_general_ci,'%'))`, string(rowJSON), string(wordJSON))
+		if err != nil {
+			return postRecord{}, err
+		}
+	}
+	return postRecord{Kind: "moderate", UserID: op.userID, StreamID: op.livestreamID, Text: op.word, Deleted: deleted, CreatedAt: time.Now().Unix()}, nil
+}
+func (s *postStore) prepareReport(ctx context.Context, op *reportMutation) (postRecord, error) {
+	s.dataMu.RLock()
+	comment, exists := s.commentsByID[op.commentID]
+	s.dataMu.RUnlock()
+	if !exists {
+		return postRecord{}, echo.NewHTTPError(http.StatusNotFound, "livecomment not found")
+	}
+	model := LivecommentReportModel{UserID: op.userID, LivestreamID: op.livestreamID, LivecommentID: op.commentID, CreatedAt: time.Now().Unix(), CommentUserID: comment.UserID, CommentLivestreamID: comment.LivestreamID, Comment: comment.Comment, CommentTip: comment.Tip, CommentCreatedAt: comment.CreatedAt}
+	response, err := fillLivecommentReportResponse(ctx, nil, model)
+	if err != nil {
+		return postRecord{}, err
+	}
+	*op.response = response
+	return postRecord{Kind: "report", UserID: op.userID, StreamID: op.livestreamID, CreatedAt: model.CreatedAt, Report: &model}, nil
 }

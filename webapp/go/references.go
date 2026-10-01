@@ -159,6 +159,9 @@ func (s *referenceStore) commitUser(tx *sqlx.Tx, user User) error {
 		return err
 	}
 	ref.icon = currentIcons.addUser(user.ID, user.Name, user.IconHash)
+	if store := currentMutations.Load(); store != nil {
+		store.addUser(user.ID, user.Name)
+	}
 	close(ref.ready)
 	return nil
 }
@@ -183,7 +186,7 @@ func (s *referenceStore) commitLivestream(ctx context.Context, tx *sqlx.Tx, mode
 		close(ref.ready)
 		return err
 	}
-	if err := ensurePostStream(model.ID); err != nil {
+	if err := ensurePostStream(model.ID, model.UserID); err != nil {
 		ref.err = err
 		close(ref.ready)
 		return err

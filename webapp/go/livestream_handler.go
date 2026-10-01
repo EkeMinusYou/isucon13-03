@@ -394,38 +394,35 @@ func getLivecommentReportsHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "livestream_id in path must be integer")
 	}
 
-	tx, err := dbConn.BeginTxx(ctx, nil)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to begin transaction: "+err.Error())
-	}
-	defer tx.Rollback()
-
 	ref, err := currentReferences.Load().livestream(ctx, int64(livestreamID))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get livestream: "+err.Error())
 	}
-
-	// error already check
-	userID := sessionUserID(c)
-
-	if ref.model.UserID != userID {
+	if ref.model.UserID != sessionUserID(c) {
 		return echo.NewHTTPError(http.StatusForbidden, "can't get other streamer's livecomment reports")
 	}
-
-	var reportModels []*LivecommentReportModel
-	if err := tx.SelectContext(ctx, &reportModels, "SELECT * FROM livecomment_reports WHERE livestream_id = ?", livestreamID); err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get livecomment reports: "+err.Error())
+	store := currentMutations.Load()
+	if store == nil {
+		return postsUnavailable("initialization is required")
 	}
-
-	reports, err := fillLivecommentReportResponses(ctx, tx, reportModels)
+	if err := store.check(); err != nil {
+		return err
+	}
+	state, err := store.stream(int64(livestreamID))
+	if err != nil {
+		return err
+	}
+	state.rowsMu.RLock()
+	models := make([]*LivecommentReportModel, 0, len(state.reports))
+	for _, model := range state.reports {
+		copy := model
+		models = append(models, &copy)
+	}
+	state.rowsMu.RUnlock()
+	reports, err := fillLivecommentReportResponses(ctx, nil, models)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fill livecomment report: "+err.Error())
 	}
-
-	if err := tx.Commit(); err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to commit: "+err.Error())
-	}
-
 	return c.JSON(http.StatusOK, reports)
 }
 

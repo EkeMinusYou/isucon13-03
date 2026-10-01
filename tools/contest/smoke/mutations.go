@@ -6,7 +6,7 @@ import (
 	"net/http"
 )
 
-func checkMutationPersistence(client *http.Client, write bool) error {
+func checkPostPersistence(client *http.Client, write bool) error {
 	const marker = "bulk-writer-smoke"
 	const emoji = "bulk_writer_smoke"
 	data, err := request(client, http.MethodGet, "/api/livestream", "")
@@ -29,7 +29,7 @@ func checkMutationPersistence(client *http.Client, write bool) error {
 		if err := json.Unmarshal(data, &words); err != nil {
 			return err
 		}
-		if len(words) != 0 {
+		if write && len(words) != 0 {
 			continue
 		}
 		var commentID, reactionID int64

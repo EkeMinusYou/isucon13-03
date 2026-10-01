@@ -25,7 +25,7 @@ func measurementHandler(maxSeconds int) http.Handler {
 			metrics["wal_pending_bytes"] = posts["pending_bytes"]
 			metrics["wal_bytes"] = posts["wal_bytes"]
 			metrics["wal_durable_seq"] = posts["durable_seq"]
-			metrics["wal_applied_seq"] = posts["applied_seq"]
+			metrics["wal_published_seq"] = posts["published_seq"]
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{

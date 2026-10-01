@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -203,6 +204,7 @@ UPDATE livecomment_reports SET comment_created_at=livecomment_id;`); err != nil 
 		if _, err := db.Exec("DELETE FROM livecomments WHERE id = 1; INSERT INTO reactions (user_id, livestream_id, emoji_name, created_at) VALUES (1, 1, 'c', 0)"); err != nil {
 			t.Fatal(err)
 		}
+		resetTestPosts(t, db)
 		checkUser(t, "alpha", UserStatistics{Rank: 2, ViewersCount: 3, TotalReactions: 4, TotalLivecomments: 2, TotalTip: 10, FavoriteEmoji: "c"})
 		checkLivestream(t, 1, LivestreamStatistics{Rank: 3, ViewersCount: 2, TotalReactions: 3, TotalReports: 2, MaxTip: 3})
 	})
@@ -247,15 +249,23 @@ UPDATE livecomment_reports SET comment_created_at=livecomment_id;`); err != nil 
 				t.Fatalf("moderation: status=%d body=%s", rec.Code, rec.Body.String())
 			}
 			var got []int64
-			if err := db.Select(&got, "SELECT id FROM livecomments ORDER BY id"); err != nil {
-				t.Fatal(err)
+			current := currentMutations.Load()
+			current.dataMu.RLock()
+			for id := range current.commentsByID {
+				got = append(got, id)
 			}
+			current.dataMu.RUnlock()
+			sort.Slice(got, func(i, j int) bool { return got[i] < got[j] })
 			if !reflect.DeepEqual(got, want) {
 				t.Fatalf("remaining comments: got=%v want=%v", got, want)
 			}
 			var count int
-			if err := db.Get(&count, "SELECT COUNT(*) FROM ng_words"); err != nil || count != 2 {
-				t.Fatalf("NG words after owner/non-owner requests: count=%d err=%v", count, err)
+			state, _ := current.stream(1)
+			state.rowsMu.RLock()
+			count = len(state.words)
+			state.rowsMu.RUnlock()
+			if count != 2 {
+				t.Fatalf("NG words after owner/non-owner requests: count=%d", count)
 			}
 			statsRec := improvementRequest(t, e, store, http.MethodGet, "/api/user/alpha/statistics", "", 1)
 			var stats UserStatistics

@@ -26,7 +26,7 @@ func main() {
 	iconsPhase := flag.String("icons-phase", "", "write or read to check durable icon updates")
 	registrationPhase := flag.String("registration-phase", "", "write or read to check durable user and DNS registration")
 	referencesPhase := flag.String("references-phase", "", "write or read to check reference publication and reload")
-	mutationsPhase := flag.String("mutations-phase", "", "write or read to check durable comments and reactions")
+	mutationsPhase := flag.String("mutations-phase", "", "write or read to check durable WAL events and statistics")
 	dnsServer := flag.String("dns-server", "", "authoritative DNS server address")
 	dnsAddress := flag.String("dns-address", "", "expected public HTTP ingress address")
 	flag.Parse()
@@ -103,7 +103,7 @@ func main() {
 			if err := checkMutationPersistence(client, *mutationsPhase == "write"); err != nil {
 				log.Fatal(err)
 			}
-			fmt.Printf("%s: mutation %s, committed comment and reaction persistence passed\n", addr, *mutationsPhase)
+			fmt.Printf("%s: mutation %s, all WAL events, moderation, report snapshots and statistics persistence passed\n", addr, *mutationsPhase)
 		}
 		if *iconsPhase != "" {
 			if err := checkIcons(client, addr, *iconsPhase == "write"); err != nil {

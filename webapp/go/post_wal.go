@@ -19,11 +19,11 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-const postMagic = "ISUPWAL2"
+const postMagic = "ISUPWAL3"
 const postHeaderSize = len(postMagic) + 36 + 8
 const postFrameLimit = 1 << 20
 const postFrameHeaderSize = 16
-const postFrameFooter = "WALDONE2"
+const postFrameFooter = "WALDONE3"
 const postFrameFooterSize = len(postFrameFooter) + postFrameHeaderSize
 const postEndSize = postFrameHeaderSize
 
@@ -31,17 +31,29 @@ var postCRC = crc32.MakeTable(crc32.Castagnoli)
 var errPostFrameHeader = errors.New("WAL frame header checksum or size mismatch")
 
 type postRecord struct {
-	Seq       uint64 `json:"seq"`
-	Kind      string `json:"kind"`
-	ID        int64  `json:"id"`
-	UserID    int64  `json:"user"`
-	StreamID  int64  `json:"stream"`
-	Text      string `json:"text"`
-	Tip       int64  `json:"tip,omitempty"`
-	CreatedAt int64  `json:"created"`
+	Seq       uint64                  `json:"seq"`
+	Kind      string                  `json:"kind"`
+	ID        int64                   `json:"id"`
+	UserID    int64                   `json:"user"`
+	StreamID  int64                   `json:"stream"`
+	Text      string                  `json:"text"`
+	Tip       int64                   `json:"tip,omitempty"`
+	CreatedAt int64                   `json:"created"`
+	Deleted   []int64                 `json:"deleted,omitempty"`
+	Report    *LivecommentReportModel `json:"report,omitempty"`
 }
 
-func (r postRecord) cost() int64 { return int64(256 + len(r.Text)) }
+func (r postRecord) cost() int64 {
+	switch r.Kind {
+	case "exit":
+		return 0
+	case "report":
+		if r.Report != nil {
+			return int64(512 + len(r.Report.Comment))
+		}
+	}
+	return int64(256 + len(r.Text))
+}
 func (r postRecord) comment() LivecommentModel {
 	return LivecommentModel{ID: r.ID, UserID: r.UserID, LivestreamID: r.StreamID, Comment: r.Text, Tip: r.Tip, CreatedAt: r.CreatedAt}
 }
@@ -66,12 +78,11 @@ type postResult struct {
 type postDBState struct {
 	Generation string `db:"generation"`
 	Ready      bool   `db:"ready"`
-	Applied    uint64 `db:"applied_seq"`
 }
 
 func readPostState(ctx context.Context, db *sqlx.DB) (postDBState, error) {
 	var state postDBState
-	err := db.GetContext(ctx, &state, "SELECT generation,ready,applied_seq FROM post_wal_state WHERE id=1")
+	err := db.GetContext(ctx, &state, "SELECT generation,ready FROM post_wal_state WHERE id=1")
 	return state, err
 }
 
@@ -107,7 +118,7 @@ func createPostGenerationCapacity(ctx context.Context, db *sqlx.DB, dir string, 
 	if err != nil {
 		return "", err
 	}
-	result, err := db.ExecContext(ctx, "UPDATE post_wal_state SET generation=?,ready=TRUE,applied_seq=0 WHERE id=1 AND ready=FALSE", gen)
+	result, err := db.ExecContext(ctx, "UPDATE post_wal_state SET generation=?,ready=TRUE WHERE id=1 AND ready=FALSE", gen)
 	if err != nil {
 		return "", err
 	}
@@ -229,10 +240,12 @@ func openPostStore(ctx context.Context, db *sqlx.DB, dir string) (*postStore, er
 	if capacity < int64(postHeaderSize+postEndSize) || capacity > postWALLimit || info.Size() != capacity {
 		return nil, fmt.Errorf("WAL capacity or physical size mismatch")
 	}
-	s := &postStore{db: db, generation: state.Generation, file: file, capacity: capacity, changed: make(chan struct{}), streams: make(map[int64]*postStream), slots: make(chan struct{}, 256), requests: make(chan postRequest, 256), wake: make(chan struct{}, 1), stop: make(chan struct{}), nextComment: 1, nextReaction: 1}
+	s := &postStore{db: db, generation: state.Generation, file: file, capacity: capacity, streams: make(map[int64]*postStream), slots: make(chan struct{}, 256), requests: make(chan postRequest, 256), nextComment: 1, nextReaction: 1, nextWord: 1, nextReport: 1}
+	if err := s.load(ctx); err != nil {
+		return nil, err
+	}
 	var seq uint64
 	offset := int64(postHeaderSize)
-	markerFound := state.Applied == 0
 	for {
 		if offset+postEndSize > capacity {
 			return nil, fmt.Errorf("WAL has no unused end marker")
@@ -245,8 +258,8 @@ func openPostStore(ctx context.Context, db *sqlx.DB, dir string) (*postStore, er
 			break
 		}
 		if errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, errPostFrameHeader) {
-			if !markerFound || seq < state.Applied || size <= 0 || offset+size+postEndSize > capacity {
-				return nil, fmt.Errorf("incomplete WAL frame exceeds available tail or DB marker")
+			if size <= 0 || offset+size+postEndSize > capacity {
+				return nil, fmt.Errorf("incomplete WAL frame exceeds available tail")
 			}
 			if err := checkPostZeroTail(file, offset+size, capacity); err != nil {
 				return nil, err
@@ -265,55 +278,28 @@ func openPostStore(ctx context.Context, db *sqlx.DB, dir string) (*postStore, er
 		}
 		seq = frame[len(frame)-1].Seq
 		for _, r := range frame {
-			if r.Kind == "comment" && r.ID >= s.nextComment {
-				s.nextComment = r.ID + 1
-			}
-			if r.Kind == "reaction" && r.ID >= s.nextReaction {
-				s.nextReaction = r.ID + 1
+			counter := s.idCounter(r.Kind)
+			if counter != nil && r.ID >= *counter {
+				*counter = r.ID + 1
 			}
 		}
-		if seq == state.Applied {
-			markerFound = true
-		}
-		if seq > state.Applied {
-			if !markerFound {
-				return nil, fmt.Errorf("DB marker is not a WAL frame boundary")
-			}
-			if err := s.projectFrameBatch(ctx, frame); err != nil {
-				return nil, err
-			}
+		if err := s.publishRecords(frame, true); err != nil {
+			return nil, err
 		}
 		offset += size
-	}
-	if !markerFound || seq < state.Applied {
-		return nil, fmt.Errorf("DB marker exceeds available WAL")
 	}
 	if _, err := file.Seek(offset, io.SeekStart); err != nil {
 		return nil, err
 	}
-	s.reader, err = os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	if _, err := s.reader.Seek(offset, io.SeekStart); err != nil {
-		s.reader.Close()
-		return nil, err
-	}
 	s.durableSeq.Store(seq)
-	s.appliedSeq.Store(seq)
+	s.publishedSeq.Store(seq)
 	s.durableBytes.Store(offset)
-	s.appliedBytes.Store(offset)
-	if err := s.load(ctx); err != nil {
-		s.reader.Close()
-		return nil, err
-	}
+	s.publishedBytes.Store(offset)
 	ok = true
 	s.syncFile = func() error { return syncPostData(file) }
 	s.writtenSeq, s.writtenBytes = seq, offset
 	s.writers.Add(1)
 	go s.writePosts()
-	s.projectors.Add(1)
-	go s.projectPosts()
 	return s, nil
 }
 
@@ -388,7 +374,7 @@ func readPostFrame(file io.Reader, previous uint64) ([]postRecord, int64, error)
 		return nil, 0, fmt.Errorf("invalid WAL frame count")
 	}
 	for _, r := range records {
-		if previous == math.MaxUint64 || r.Seq != previous+1 || r.ID <= 0 || r.ID == math.MaxInt64 || (r.Kind != "comment" && r.Kind != "reaction") || !utf8.ValidString(r.Text) || utf8.RuneCountInString(r.Text) > 255 {
+		if previous == math.MaxUint64 || r.Seq != previous+1 || !validPostRecord(r) {
 			return nil, 0, fmt.Errorf("invalid WAL record")
 		}
 		previous = r.Seq
@@ -449,16 +435,20 @@ func (s *postStore) appendPostBatch(batch []postRequest) {
 	if err == nil {
 		for i, r := range batch {
 			records[i] = r.record
-			counter := &s.nextReaction
-			if r.record.Kind == "comment" {
-				counter = &s.nextComment
-			}
-			if *counter >= math.MaxInt64 || seq == math.MaxUint64 {
+			counter := s.idCounter(r.record.Kind)
+			if (counter != nil && *counter >= math.MaxInt64) || seq == math.MaxUint64 {
 				err = fmt.Errorf("post ID or sequence exhausted")
 				break
 			}
-			records[i].ID = *counter
-			*counter++
+			if counter != nil {
+				records[i].ID = *counter
+				*counter++
+			}
+			if records[i].Report != nil {
+				copy := *records[i].Report
+				copy.ID = records[i].ID
+				records[i].Report = &copy
+			}
 			seq++
 			records[i].Seq = seq
 		}
@@ -467,7 +457,7 @@ func (s *postStore) appendPostBatch(batch []postRequest) {
 	if err == nil {
 		frame, err = encodePostFrame(records)
 	}
-	if err == nil && (s.writtenBytes+int64(len(frame))+postEndSize > s.capacity || s.writtenBytes-s.appliedBytes.Load()+int64(len(frame)) > postPendingLimit) {
+	if err == nil && (s.writtenBytes+int64(len(frame))+postEndSize > s.capacity || s.writtenBytes-s.durableBytes.Load()+int64(len(frame)) > postPendingLimit) {
 		err = postsUnavailable("WAL capacity reached")
 	}
 	if err == nil {
@@ -517,14 +507,22 @@ func (s *postStore) syncPosts() {
 			}
 		}
 		if err == nil {
-			last := batches[len(batches)-1]
-			s.mu.Lock()
-			s.durableBytes.Store(last.end)
-			s.durableSeq.Store(last.records[len(last.records)-1].Seq)
 			for _, batch := range batches {
-				s.records.Add(uint64(len(batch.records)))
+				if err = s.publishRecords(batch.records, false); err != nil {
+					s.fail(err)
+					break
+				}
 			}
-			s.mu.Unlock()
+			if err == nil {
+				last := batches[len(batches)-1]
+				s.durableBytes.Store(last.end)
+				s.durableSeq.Store(last.records[len(last.records)-1].Seq)
+				s.publishedBytes.Store(last.end)
+				s.publishedSeq.Store(s.durableSeq.Load())
+				for _, batch := range batches {
+					s.records.Add(uint64(len(batch.records)))
+				}
+			}
 		}
 		for _, batch := range batches {
 			for i, r := range batch.requests {
@@ -532,4 +530,40 @@ func (s *postStore) syncPosts() {
 			}
 		}
 	}
+}
+
+func (s *postStore) idCounter(kind string) *int64 {
+	switch kind {
+	case "comment":
+		return &s.nextComment
+	case "reaction":
+		return &s.nextReaction
+	case "moderate":
+		return &s.nextWord
+	case "report":
+		return &s.nextReport
+	}
+	return nil
+}
+func validPostRecord(r postRecord) bool {
+	if !utf8.ValidString(r.Text) || utf8.RuneCountInString(r.Text) > 255 {
+		return false
+	}
+	switch r.Kind {
+	case "comment", "reaction", "moderate":
+		if r.ID <= 0 || r.ID == math.MaxInt64 {
+			return false
+		}
+		for _, id := range r.Deleted {
+			if id <= 0 {
+				return false
+			}
+		}
+		return r.Report == nil
+	case "report":
+		return r.ID > 0 && r.ID < math.MaxInt64 && r.Report != nil && r.Report.ID == r.ID && r.Report.LivecommentID > 0 && r.Report.UserID == r.UserID && r.Report.LivestreamID == r.StreamID
+	case "enter", "exit":
+		return r.ID == 0 && r.Report == nil
+	}
+	return false
 }

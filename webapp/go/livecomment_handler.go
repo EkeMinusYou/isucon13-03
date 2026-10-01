@@ -2,10 +2,9 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
-	"errors"
 	"net/http"
+	"sort"
 	"strconv"
 	"time"
 
@@ -110,8 +109,6 @@ func getLivecommentsHandler(c echo.Context) error {
 }
 
 func getNgwords(c echo.Context) error {
-	ctx := c.Request().Context()
-
 	if err := verifyUserSession(c); err != nil {
 		return err
 	}
@@ -124,16 +121,28 @@ func getNgwords(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "livestream_id in path must be integer")
 	}
 
-	var ngWords []*NGWord
-	if err := dbConn.SelectContext(ctx, &ngWords, "SELECT * FROM ng_words WHERE user_id = ? AND livestream_id = ? ORDER BY created_at DESC", userID, livestreamID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return c.JSON(http.StatusOK, []*NGWord{})
-		} else {
-			return echo.NewHTTPError(http.StatusInternalServerError, "failed to get NG words: "+err.Error())
+	store := currentMutations.Load()
+	if store == nil {
+		return postsUnavailable("initialization is required")
+	}
+	if err := store.check(); err != nil {
+		return err
+	}
+	state, err := store.stream(int64(livestreamID))
+	if err != nil {
+		return err
+	}
+	state.rowsMu.RLock()
+	words := make([]*NGWord, 0, len(state.words))
+	for _, word := range state.words {
+		if word.UserID == userID {
+			copy := word
+			words = append(words, &copy)
 		}
 	}
-
-	return c.JSON(http.StatusOK, ngWords)
+	state.rowsMu.RUnlock()
+	sort.SliceStable(words, func(i, j int) bool { return words[i].CreatedAt > words[j].CreatedAt })
+	return c.JSON(http.StatusOK, words)
 }
 
 func postLivecommentHandler(c echo.Context) error {

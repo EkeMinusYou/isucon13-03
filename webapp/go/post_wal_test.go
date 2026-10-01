@@ -3,8 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"database/sql"
-	"database/sql/driver"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,7 +16,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v4"
 )
@@ -88,9 +85,9 @@ func writerTestStore(t *testing.T) *postStore {
 	if err := initializePostFile(context.Background(), file, "00000000-0000-0000-0000-000000000000", capacity); err != nil {
 		t.Fatal(err)
 	}
-	s := &postStore{file: file, capacity: capacity, syncFile: func() error { return syncPostData(file) }, changed: make(chan struct{}), streams: make(map[int64]*postStream), slots: make(chan struct{}, 256), requests: make(chan postRequest, 256), nextComment: 1, nextReaction: 1}
+	s := &postStore{file: file, capacity: capacity, syncFile: func() error { return syncPostData(file) }, streams: make(map[int64]*postStream), slots: make(chan struct{}, 256), requests: make(chan postRequest, 256), nextComment: 1, nextReaction: 1, nextWord: 1, nextReport: 1}
 	s.durableBytes.Store(int64(postHeaderSize))
-	s.appliedBytes.Store(int64(postHeaderSize))
+	s.publishedBytes.Store(int64(postHeaderSize))
 	t.Cleanup(func() { close(s.requests); s.writers.Wait(); file.Close() })
 	return s
 }
@@ -294,7 +291,7 @@ func checkDurablePosts(t *testing.T, db *sqlx.DB, e *echo.Echo, cookies *struct{
 	}
 	e.GET("/api/payment", GetPaymentResult)
 	t.Run("preallocated_tail_recovery_and_corruption", func(t *testing.T) {
-		for _, name := range []string{"partial_header", "partial_payload", "partial_footer", "header_corruption", "payload_corruption", "data_after_end", "data_after_incomplete", "db_marker_exceeds_tail", "truncated_file"} {
+		for _, name := range []string{"partial_header", "partial_payload", "partial_footer", "header_corruption", "payload_corruption", "data_after_end", "data_after_incomplete", "truncated_file"} {
 			t.Run(name, func(t *testing.T) {
 				clearRows()
 				dir := resetTestPosts(t, db)
@@ -339,12 +336,6 @@ func checkDurablePosts(t *testing.T, db *sqlx.DB, e *echo.Echo, cookies *struct{
 					expectError = true
 				case "data_after_end":
 					position += postEndSize
-					expectError = true
-				case "db_marker_exceeds_tail":
-					data = data[:postFrameHeaderSize+7]
-					if _, err := db.Exec("UPDATE post_wal_state SET applied_seq=2 WHERE id=1"); err != nil {
-						t.Fatal(err)
-					}
 					expectError = true
 				case "truncated_file":
 					if err := file.Truncate(s.capacity - 1); err != nil {
@@ -393,55 +384,37 @@ func checkDurablePosts(t *testing.T, db *sqlx.DB, e *echo.Echo, cookies *struct{
 			})
 		}
 	})
-	t.Run("projection_atomicity_and_lost_commit_reply", func(t *testing.T) {
-		clearRows()
-		resetTestPosts(t, db)
-		s := currentMutations.Load()
-		records := []postRecord{{Seq: 1, Kind: "comment", ID: 1000001, UserID: 2, StreamID: 1, Text: "atomic", Tip: 5}, {Seq: 2, Kind: "reaction", ID: 1000001, UserID: 2, StreamID: 1, Text: "atomic"}}
-		if _, err := db.Exec("CREATE TRIGGER reject_atomic_projection BEFORE INSERT ON reactions FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='injected second-table failure'"); err != nil {
-			t.Fatal(err)
-		}
-		if err := s.projectFrameBatch(ctx, records); err == nil {
-			t.Fatal("partial projection succeeded")
-		}
-		if _, err := db.Exec("DROP TRIGGER reject_atomic_projection"); err != nil {
-			t.Fatal(err)
-		}
-		var count int
-		if err := db.Get(&count, "SELECT COUNT(*) FROM livecomments WHERE id=1000001"); err != nil || count != 0 {
-			t.Fatalf("partial row committed: %d %v", count, err)
-		}
-		state, err := readPostState(ctx, db)
-		if err != nil || state.Applied != 0 {
-			t.Fatalf("partial marker committed: %+v %v", state, err)
-		}
-		config, err := mysql.ParseDSN(os.Getenv("ISUCON_TEST_MYSQL_DSN"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := db.Get(&config.DBName, "SELECT DATABASE()"); err != nil {
-			t.Fatal(err)
-		}
-		connector, err := mysql.NewConnector(config)
-		if err != nil {
-			t.Fatal(err)
-		}
-		faultDB := sqlx.NewDb(sql.OpenDB(commitReplyLostConnector{connector}), "mysql")
-		defer faultDB.Close()
-		s.db = faultDB
-		if err := s.projectFrameBatch(ctx, records); err != nil {
-			t.Fatalf("committed marker was not recognized: %v", err)
-		}
-		s.db = db
-		state, err = readPostState(ctx, db)
-		if err != nil || state.Applied != 2 {
-			t.Fatalf("lost reply marker: %+v %v", state, err)
-		}
-	})
 	t.Run("concurrent_posts_reads_moderation_and_restart", func(t *testing.T) {
 		clearRows()
 		dir := resetTestPosts(t, db)
 		s := currentMutations.Load()
+		beforeViewers, err := s.livestreamStatistics(1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		state, _ := s.stream(1)
+		state.rowsMu.RLock()
+		previousViewerRows := state.viewers[2]
+		state.rowsMu.RUnlock()
+		for i := 0; i < 2; i++ {
+			if err := s.submit(ctx, 1, &viewerMutation{userID: 2, livestreamID: 1, enter: true}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		afterEnter, err := s.livestreamStatistics(1)
+		if err != nil || afterEnter.ViewersCount != beforeViewers.ViewersCount+2 {
+			t.Fatalf("duplicate viewer entries: %+v %v", afterEnter, err)
+		}
+		if err := s.submit(ctx, 1, &viewerMutation{userID: 2, livestreamID: 1}); err != nil {
+			t.Fatal(err)
+		}
+		afterExit, err := s.livestreamStatistics(1)
+		if err != nil || afterExit.ViewersCount != beforeViewers.ViewersCount-previousViewerRows {
+			t.Fatalf("viewer exit did not delete all entries: %+v %v", afterExit, err)
+		}
+		if err := s.submit(ctx, 1, &viewerMutation{userID: 2, livestreamID: 1, enter: true}); err != nil {
+			t.Fatal(err)
+		}
 		var wg sync.WaitGroup
 		var idsMu sync.Mutex
 		ids := map[int64]bool{}
@@ -469,12 +442,15 @@ func checkDurablePosts(t *testing.T, db *sqlx.DB, e *echo.Echo, cookies *struct{
 			}(stream)
 		}
 		wg.Wait()
-		if err := flushPosts(ctx); err != nil {
-			t.Fatal(err)
+		s.dataMu.RLock()
+		total := len(s.commentsByID)
+		s.dataMu.RUnlock()
+		if total != 24 {
+			t.Fatalf("durable memory posts: %d", total)
 		}
-		var total int
-		if err := db.Get(&total, "SELECT COUNT(*) FROM livecomments"); err != nil || total != 24 {
-			t.Fatalf("projected posts: %d %v", total, err)
+		var persisted int
+		if err := db.Get(&persisted, "SELECT COUNT(*) FROM livecomments"); err != nil || persisted != 0 {
+			t.Fatalf("hot rows leaked into MySQL: %d %v", persisted, err)
 		}
 		rec := improvementRequest(t, e, cookies, http.MethodPost, "/api/livestream/1/livecomment", `{"comment":"moderation-target","tip":11}`, 2)
 		if rec.Code != 201 {
@@ -506,10 +482,22 @@ func checkDurablePosts(t *testing.T, db *sqlx.DB, e *echo.Echo, cookies *struct{
 		if err := json.Unmarshal(payment.Body.Bytes(), &amount); err != nil || payment.Code != 200 || amount.TotalTip != 168 {
 			t.Fatalf("payment after deletion: %s %v", payment.Body, err)
 		}
+		beforeUser, err := s.userStatistics(1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		beforeStream, err := s.livestreamStatistics(1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		state.rowsMu.RLock()
+		beforeWord := state.words[len(state.words)-1]
+		beforeReport := state.reports[len(state.reports)-1]
+		state.rowsMu.RUnlock()
 		if err := s.close(); err != nil {
 			t.Fatal(err)
 		}
-		// A partial trailing frame cannot resurrect a previously projected deletion.
+		// A partial trailing frame cannot resurrect a durable deletion.
 		file, err := os.OpenFile(filepath.Join(dir, s.generation+".wal"), os.O_WRONLY, 0640)
 		if err != nil {
 			t.Fatal(err)
@@ -523,6 +511,26 @@ func checkDurablePosts(t *testing.T, db *sqlx.DB, e *echo.Echo, cookies *struct{
 			t.Fatal(err)
 		}
 		currentMutations.Store(recovered)
+		afterUser, err := recovered.userStatistics(1)
+		if err != nil || afterUser != beforeUser {
+			t.Fatalf("recovered user statistics: %+v %+v %v", afterUser, beforeUser, err)
+		}
+		afterStream, err := recovered.livestreamStatistics(1)
+		if err != nil || afterStream != beforeStream {
+			t.Fatalf("recovered stream statistics: %+v %+v %v", afterStream, beforeStream, err)
+		}
+		recoveredState, _ := recovered.stream(1)
+		recoveredState.rowsMu.RLock()
+		afterWord := recoveredState.words[len(recoveredState.words)-1]
+		afterReport := recoveredState.reports[len(recoveredState.reports)-1]
+		recoveredState.rowsMu.RUnlock()
+		if afterWord != beforeWord || afterReport != beforeReport {
+			t.Fatal("NG word ID or report snapshot changed after replay")
+		}
+		totalTip, err := recovered.payment()
+		if err != nil || totalTip != 168 {
+			t.Fatalf("recovered payment: %d %v", totalTip, err)
+		}
 		read = improvementRequest(t, e, cookies, http.MethodGet, "/api/livestream/1/livecomment", "", 1)
 		if read.Code != 200 || strings.Contains(read.Body.String(), "moderation-target") {
 			t.Fatalf("deletion resurrected: %s", read.Body)
@@ -536,46 +544,36 @@ func checkDurablePosts(t *testing.T, db *sqlx.DB, e *echo.Echo, cookies *struct{
 			t.Fatal("report snapshot lost")
 		}
 	})
-	t.Run("unprojected_durable_frame", func(t *testing.T) {
+	t.Run("wal_is_authoritative", func(t *testing.T) {
 		clearRows()
 		dir := resetTestPosts(t, db)
-		if _, err := db.Exec("CREATE TRIGGER reject_projection BEFORE INSERT ON reactions FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='injected projection failure'"); err != nil {
+		s := currentMutations.Load()
+		if _, err := db.Exec("CREATE TRIGGER reject_hot_write BEFORE INSERT ON reactions FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='hot SQL writes forbidden'"); err != nil {
 			t.Fatal(err)
 		}
-		s := currentMutations.Load()
-		model := &ReactionModel{UserID: 2, LivestreamID: 1, EmojiName: "durable-unprojected"}
+		defer db.Exec("DROP TRIGGER reject_hot_write")
+		model := &ReactionModel{UserID: 2, LivestreamID: 1, EmojiName: "wal-only"}
 		if err := s.submit(ctx, 1, &reactionMutation{model: model}); err != nil {
 			t.Fatal(err)
 		}
-		if err := flushPosts(ctx); err == nil {
-			t.Fatal("failed projector reported success")
-		}
-		if err := s.close(); err == nil {
-			t.Fatal("failed projector closed successfully")
-		}
-		if _, err := db.Exec("DROP TRIGGER reject_projection"); err != nil {
-			t.Fatal(err)
-		}
-		recovered, err := openPostStore(ctx, db, dir)
-		if err != nil {
-			t.Fatal(err)
-		}
-		currentMutations.Store(recovered)
-		var row ReactionModel
-		if err := db.Get(&row, "SELECT * FROM reactions WHERE id=?", model.ID); err != nil || row != *model {
-			t.Fatalf("unprojected recovery: %+v %v", row, err)
-		}
-		if err := recovered.close(); err != nil {
-			t.Fatal(err)
-		}
-		recovered, err = openPostStore(ctx, db, dir)
-		if err != nil {
-			t.Fatal(err)
-		}
-		currentMutations.Store(recovered)
-		var count int
-		if err := db.Get(&count, "SELECT COUNT(*) FROM reactions WHERE id=?", model.ID); err != nil || count != 1 {
-			t.Fatalf("replay duplication: %d %v", count, err)
+		for i := 0; i < 2; i++ {
+			if err := s.close(); err != nil {
+				t.Fatal(err)
+			}
+			recovered, err := openPostStore(ctx, db, dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			s = recovered
+			currentMutations.Store(s)
+			_, rows, err := s.timeline(ctx, 1, -1, false)
+			if err != nil || len(rows) != 1 || rows[0] != *model {
+				t.Fatalf("WAL replay: %+v %v", rows, err)
+			}
+			var count int
+			if err := db.Get(&count, "SELECT COUNT(*) FROM reactions"); err != nil || count != 0 {
+				t.Fatalf("WAL wrote SQL rows: %d %v", count, err)
+			}
 		}
 	})
 	t.Run("unready_generation", func(t *testing.T) {
@@ -620,41 +618,4 @@ func checkDurablePosts(t *testing.T, db *sqlx.DB, e *echo.Echo, cookies *struct{
 			t.Fatalf("old generation retained: %v", err)
 		}
 	})
-}
-
-// The real database commits, but the client receives a broken-connection error.
-type commitReplyLostConnector struct{ driver.Connector }
-
-func (c commitReplyLostConnector) Connect(ctx context.Context) (driver.Conn, error) {
-	conn, err := c.Connector.Connect(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return commitReplyLostConn{conn}, nil
-}
-
-type commitReplyLostConn struct{ driver.Conn }
-
-func (c commitReplyLostConn) Begin() (driver.Tx, error) {
-	tx, err := c.Conn.Begin()
-	if err != nil {
-		return nil, err
-	}
-	return commitReplyLostTx{tx}, nil
-}
-func (c commitReplyLostConn) BeginTx(ctx context.Context, options driver.TxOptions) (driver.Tx, error) {
-	tx, err := c.Conn.(driver.ConnBeginTx).BeginTx(ctx, options)
-	if err != nil {
-		return nil, err
-	}
-	return commitReplyLostTx{tx}, nil
-}
-
-type commitReplyLostTx struct{ driver.Tx }
-
-func (t commitReplyLostTx) Commit() error {
-	if err := t.Tx.Commit(); err != nil {
-		return err
-	}
-	return driver.ErrBadConn
 }
