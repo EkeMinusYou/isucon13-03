@@ -6,6 +6,7 @@ import (
 	"os"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v4"
@@ -56,9 +57,13 @@ type postStore struct {
 	durableSeq, publishedSeq     atomic.Uint64
 	durableBytes, publishedBytes atomic.Int64
 	syncs, syncNanos, records    atomic.Uint64
+	groupWaits, groupWaitNanos   atomic.Uint64
+	singleRecordSyncs            atomic.Uint64
 	nextComment, nextReaction    int64
 	walMu                        sync.Mutex
 	pending                      []postBatch
+	pendingRecords               int
+	pendingSince                 time.Time
 	syncWake                     chan struct{}
 	writtenSeq                   uint64
 	writtenBytes                 int64
@@ -178,7 +183,7 @@ func (s *postStore) metrics() map[string]any {
 	s.walMu.Lock()
 	pending := s.writtenBytes - s.durableBytes.Load()
 	s.walMu.Unlock()
-	return map[string]any{"generation": s.generation, "durable_seq": s.durableSeq.Load(), "published_seq": s.publishedSeq.Load(), "wal_bytes": s.durableBytes.Load(), "pending_bytes": pending, "rows": rows, "model_budget_bytes": memory, "records": s.records.Load(), "syncs": s.syncs.Load(), "sync_ns": s.syncNanos.Load(), "failed": failed}
+	return map[string]any{"generation": s.generation, "durable_seq": s.durableSeq.Load(), "published_seq": s.publishedSeq.Load(), "wal_bytes": s.durableBytes.Load(), "pending_bytes": pending, "rows": rows, "model_budget_bytes": memory, "records": s.records.Load(), "syncs": s.syncs.Load(), "sync_ns": s.syncNanos.Load(), "group_waits": s.groupWaits.Load(), "group_wait_ns": s.groupWaitNanos.Load(), "single_record_syncs": s.singleRecordSyncs.Load(), "failed": failed}
 }
 
 func postDirectory() string {

@@ -27,6 +27,9 @@ const postFrameFooter = "WALDONE3"
 const postFrameFooterSize = len(postFrameFooter) + postFrameHeaderSize
 const postEndSize = postFrameHeaderSize
 
+const postSyncGroupRecords = 4
+const postSyncGroupWait = 500 * time.Microsecond
+
 var postCRC = crc32.MakeTable(crc32.Castagnoli)
 var errPostFrameHeader = errors.New("WAL frame header checksum or size mismatch")
 
@@ -468,7 +471,11 @@ func (s *postStore) appendPostBatch(batch []postRequest) {
 		if err == nil {
 			s.writtenBytes += int64(len(frame))
 			s.writtenSeq = seq
+			if len(s.pending) == 0 {
+				s.pendingSince = time.Now()
+			}
 			s.pending = append(s.pending, postBatch{requests: batch, records: records, end: s.writtenBytes})
+			s.pendingRecords += len(records)
 		}
 		s.walMu.Unlock()
 		if err != nil {
@@ -487,47 +494,112 @@ func (s *postStore) appendPostBatch(batch []postRequest) {
 	}
 }
 
+// Capture only complete frames, keeping the oldest frame's deadline fixed
+// across notifications. A sync group can contain more than the trigger count.
+func (s *postStore) takePostBatches(now time.Time, flush bool) ([]postBatch, time.Duration) {
+	s.walMu.Lock()
+	defer s.walMu.Unlock()
+	if len(s.pending) == 0 {
+		return nil, 0
+	}
+	wait := s.pendingSince.Add(postSyncGroupWait).Sub(now)
+	if !flush && s.pendingRecords < postSyncGroupRecords && wait > 0 {
+		return nil, wait
+	}
+	batches := s.pending
+	s.pending = nil
+	s.pendingRecords = 0
+	s.pendingSince = time.Time{}
+	return batches, 0
+}
+
+func stopPostTimer(timer *time.Timer) {
+	if !timer.Stop() {
+		select {
+		case <-timer.C:
+		default:
+		}
+	}
+}
+
 func (s *postStore) syncPosts() {
-	for range s.syncWake {
-		s.walMu.Lock()
-		batches := s.pending
-		s.pending = nil
-		s.walMu.Unlock()
+	timer := time.NewTimer(time.Hour)
+	stopPostTimer(timer)
+	defer stopPostTimer(timer)
+	closing := false
+	var waitStarted time.Time
+	for {
+		flush := closing || s.check() != nil
+		checkedAt := time.Now()
+		batches, wait := s.takePostBatches(checkedAt, flush)
 		if len(batches) == 0 {
+			if closing {
+				return
+			}
+			var deadline <-chan time.Time
+			if wait > 0 {
+				if waitStarted.IsZero() {
+					waitStarted = time.Now()
+					s.groupWaits.Add(1)
+				}
+				timer.Reset(time.Until(checkedAt.Add(wait)))
+				deadline = timer.C
+			}
+			select {
+			case _, ok := <-s.syncWake:
+				closing = !ok
+			case <-deadline:
+			}
+			stopPostTimer(timer)
 			continue
 		}
-		err := s.check()
-		if err == nil {
-			start := time.Now()
-			err = s.syncFile()
-			s.syncNanos.Add(uint64(time.Since(start)))
-			s.syncs.Add(1)
-			if err != nil {
-				s.fail(fmt.Errorf("WAL Sync: %w", err))
-			}
+		if !waitStarted.IsZero() {
+			s.groupWaitNanos.Add(uint64(time.Since(waitStarted)))
+			waitStarted = time.Time{}
 		}
-		if err == nil {
-			for _, batch := range batches {
-				if err = s.publishRecords(batch.records, false); err != nil {
-					s.fail(err)
-					break
-				}
-			}
-			if err == nil {
-				last := batches[len(batches)-1]
-				s.durableBytes.Store(last.end)
-				s.durableSeq.Store(last.records[len(last.records)-1].Seq)
-				s.publishedBytes.Store(last.end)
-				s.publishedSeq.Store(s.durableSeq.Load())
-				for _, batch := range batches {
-					s.records.Add(uint64(len(batch.records)))
-				}
-			}
-		}
+		s.syncPostBatches(batches)
+	}
+}
+
+func (s *postStore) syncPostBatches(batches []postBatch) {
+	err := s.check()
+	if err == nil {
+		count := 0
 		for _, batch := range batches {
-			for i, r := range batch.requests {
-				r.done <- postResult{record: batch.records[i], err: err}
+			count += len(batch.records)
+		}
+		if count == 1 {
+			s.singleRecordSyncs.Add(1)
+		}
+		start := time.Now()
+		err = s.syncFile()
+		s.syncNanos.Add(uint64(time.Since(start)))
+		s.syncs.Add(1)
+		if err != nil {
+			s.fail(fmt.Errorf("WAL Sync: %w", err))
+		}
+	}
+	if err == nil {
+		for _, batch := range batches {
+			if err = s.publishRecords(batch.records, false); err != nil {
+				s.fail(err)
+				break
 			}
+		}
+		if err == nil {
+			last := batches[len(batches)-1]
+			s.durableBytes.Store(last.end)
+			s.durableSeq.Store(last.records[len(last.records)-1].Seq)
+			s.publishedBytes.Store(last.end)
+			s.publishedSeq.Store(s.durableSeq.Load())
+			for _, batch := range batches {
+				s.records.Add(uint64(len(batch.records)))
+			}
+		}
+	}
+	for _, batch := range batches {
+		for i, r := range batch.requests {
+			r.done <- postResult{record: batch.records[i], err: err}
 		}
 	}
 }
