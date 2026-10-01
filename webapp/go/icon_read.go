@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -86,6 +87,9 @@ type iconReplica struct {
 	revision     uint64
 	validUntil   time.Time
 	invalidation uint64
+	changes      []iconChange
+	changeBase   uint64
+	edgeWake     chan struct{}
 	origin       string
 	client       *http.Client
 	proxy        *httputil.ReverseProxy
@@ -99,7 +103,7 @@ func newIconReplica(origin string) (*iconReplica, error) {
 	transport := &http.Transport{DialContext: (&net.Dialer{Timeout: time.Second}).DialContext, MaxIdleConnsPerHost: 32, ResponseHeaderTimeout: time.Second}
 	proxy := httputil.NewSingleHostReverseProxy(u)
 	proxy.Transport = transport
-	return &iconReplica{origin: strings.TrimRight(origin, "/"), client: &http.Client{Transport: transport, Timeout: time.Second}, proxy: proxy, byName: make(map[string]string)}, nil
+	return &iconReplica{origin: strings.TrimRight(origin, "/"), client: &http.Client{Transport: transport, Timeout: time.Second}, proxy: proxy, byName: make(map[string]string), edgeWake: make(chan struct{}, 1)}, nil
 }
 
 func (s *iconReplica) refresh(ctx context.Context) error {
@@ -141,6 +145,9 @@ func (s *iconReplica) refresh(ctx context.Context) error {
 	}
 	if snap.Full {
 		s.byName = make(map[string]string, len(snap.Changes))
+		s.changes, s.changeBase = nil, snap.Revision
+	} else {
+		s.appendChanges(snap.Changes)
 	}
 	for _, change := range snap.Changes {
 		s.byName[change.Name] = change.Hash
@@ -148,6 +155,7 @@ func (s *iconReplica) refresh(ctx context.Context) error {
 	s.epoch, s.revision = snap.Epoch, snap.Revision
 	// Start at request dispatch, so a slow response cannot prolong old metadata.
 	s.validUntil = started.Add(iconLease)
+	s.wakeEdge()
 	return nil
 }
 
@@ -166,11 +174,13 @@ func (s *iconReplica) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.invalidation++
 		if update.Epoch == s.epoch && update.Revision == s.revision+1 {
 			s.byName[update.Name] = update.Hash
+			s.appendChanges([]iconChange{{Name: update.Name, Hash: update.Hash}})
 			s.revision = update.Revision
 		} else if update.Epoch != s.epoch || update.Revision > s.revision {
 			// An out-of-order notification cannot certify the other names.
 			s.validUntil = time.Time{}
 		}
+		s.wakeEdge()
 		s.mu.Unlock()
 		w.WriteHeader(http.StatusNoContent)
 		return
@@ -184,6 +194,8 @@ func (s *iconReplica) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.invalidation++
 		s.validUntil = time.Time{}
 		s.epoch, s.revision = "", 0
+		s.changes, s.changeBase = nil, 0
+		s.wakeEdge()
 		s.mu.Unlock()
 		w.WriteHeader(http.StatusNoContent)
 		return
@@ -229,6 +241,9 @@ func runIconRead() error {
 	if err != nil {
 		return err
 	}
+	if endpoint := os.Getenv("ISUPIPE_ICON_EDGE_URL"); endpoint != "" {
+		go s.runEdgePublisher(context.Background(), endpoint)
+	}
 	go func() {
 		ticker := time.NewTicker(iconSyncInterval)
 		defer ticker.Stop()
@@ -237,6 +252,24 @@ func runIconRead() error {
 			<-ticker.C
 		}
 	}()
+	if socket := os.Getenv("ISUPIPE_ICON_READ_SOCKET"); socket != "" {
+		if err := os.Remove(socket); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		listener, err := net.Listen("unix", socket)
+		if err != nil {
+			return err
+		}
+		if err := os.Chmod(socket, 0666); err != nil {
+			listener.Close()
+			return err
+		}
+		go func() {
+			if err := (&http.Server{Handler: s, ReadHeaderTimeout: time.Second}).Serve(listener); err != nil {
+				log.Fatal(err)
+			}
+		}()
+	}
 	return (&http.Server{Addr: os.Getenv("ISUPIPE_ICON_READ_LISTEN"), Handler: s, ReadHeaderTimeout: time.Second}).ListenAndServe()
 }
 

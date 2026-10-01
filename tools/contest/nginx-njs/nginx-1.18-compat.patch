@@ -1,0 +1,17 @@
+--- a/nginx/ngx_js.c
++++ b/nginx/ngx_js.c
+@@ -2542,8 +2542,13 @@
+     njs_value_t *value, njs_value_t *setval, njs_value_t *retval)
+ {
+-    return njs_vm_value_string_create(vm, retval, ngx_cycle->error_log.data,
+-                                      ngx_cycle->error_log.len);
++    ngx_str_t path = ngx_null_string;
++
++    /* nginx 1.18 stores the error log path on the open log file. */
++    if (ngx_cycle->log->file != NULL) {
++        path = ngx_cycle->log->file->name;
++    }
++    return njs_vm_value_string_create(vm, retval, path.data, path.len);
+ }
+ 
+ 

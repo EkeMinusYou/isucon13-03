@@ -9,6 +9,90 @@
 version: '3'
 
 tasks:
+  setup-icon-edge-sources:
+    desc: nginxとnjsの固定version sourceをローカルへ取得する
+    status:
+      - cd .task/icon-edge/sources && shasum -a 256 -c '{{.ROOT_DIR}}/tools/contest/nginx-njs/sources.sha256' >/dev/null
+    cmds:
+      - mkdir -p .task/icon-edge/sources
+      - curl --fail --location --retry 2 --max-time 60 https://nginx.org/download/nginx-1.18.0.tar.gz -o .task/icon-edge/sources/nginx-1.18.0.tar.gz
+      - curl --fail --location --retry 2 --max-time 60 https://codeload.github.com/nginx/njs/tar.gz/refs/tags/0.8.9 -o .task/icon-edge/sources/njs-0.8.9.tar.gz
+      - cd .task/icon-edge/sources && shasum -a 256 -c '{{.ROOT_DIR}}/tools/contest/nginx-njs/sources.sha256'
+
+  build-icon-edge-module:
+    desc: 現行nginx用njs moduleをローカルLinux/amd64 Dockerでビルドする
+    deps: [setup-icon-edge-sources]
+    sources: [tools/contest/nginx-njs/Containerfile, tools/contest/nginx-njs/sources.sha256, tools/contest/nginx-njs/nginx-1.18-compat.patch]
+    generates: [.task/icon-edge/build/ngx_http_js_module.so]
+    cmds:
+      - mkdir -p .task/icon-edge/docker
+      - cp tools/contest/nginx-njs/nginx-1.18-compat.patch .task/icon-edge/sources/
+      - DOCKER_CONFIG='{{.ROOT_DIR}}/.task/icon-edge/docker' docker build --platform linux/amd64 -f tools/contest/nginx-njs/Containerfile -t isucon-icon-edge:local .task/icon-edge/sources
+      - mkdir -p .task/icon-edge/build
+      - docker run --rm --platform linux/amd64 -v '{{.ROOT_DIR}}/.task/icon-edge/build:/output' isucon-icon-edge:local sh -c 'cp /build/nginx-1.18.0/objs/ngx_http_js_module.so /output/; sha256sum /output/ngx_http_js_module.so'
+
+  check-icon-edge-local:
+    desc: 実nginxの2 workerとLinux Goで直接304・公開・期限・再起動を検証する
+    deps: [build, build-icon-edge-module]
+    cmds:
+      - docker run --rm --platform linux/amd64 -v '{{.ROOT_DIR}}/nginx/njs:/etc/nginx/njs:ro' -v '{{.ROOT_DIR}}/tools/contest/nginx-njs:/checks:ro' -v '{{.ROOT_DIR}}/{{.APP_DIR}}/{{.APP_NAME}}:/app/isupipe:ro' isucon-icon-edge:local python3 /checks/check.py
+
+  deploy-icon-edge:
+    desc: 1号機nginx・icon readerと3号機通知先を配布し更新・初期化・再起動を確認する
+    preconditions:
+      - sh: test ! -f '{{.RUN_STATE_FILE}}'
+        msg: active benchmark exists
+    cmds:
+      - task: inspect-fast-paths
+      - task: build-icon-edge-module
+      - task: gen
+      - task: build
+      - task: deploy-plan
+        vars: { PLAN: icon-edge }
+      - task: check-icon-read
+      - task: check-app-deployment
+        vars: { ICON_SMOKE_PHASE: write, ICON_EDGE_CHECK: 'true' }
+      - task: restart-icon-edge-check
+      - task: deploy-app
+      - task: check-icon-read
+      - task: check-app-deployment
+        vars: { ICON_SMOKE_PHASE: read, ICON_EDGE_CHECK: 'true' }
+      - task: deploy-plan
+        vars: { PLAN: fast-paths-initialize }
+      - task: check-app-deployment
+        vars: { ICON_EDGE_CHECK: 'true' }
+      - task: check-icon-read
+      - task: check-icon-edge
+      - task: deploy-dns
+      - task: check-role-split
+
+  deploy-icon-edge-dry:
+    desc: icon edgeの配布先とサービス操作の順序を表示する
+    deps: [gen, build-deployctl]
+    cmds:
+      - '{{.DEPLOYCTL_DIR}}/deployctl apply-plan icon-edge -dry-run -config {{.DEPLOYCTL_CONFIG}} {{.DEPLOYCTL_COMMON}}'
+
+  check-icon-edge:
+    desc: 実nginxのmoduleと共有辞書の公開状態を確認する
+    vars:
+      MODULE_SHA256:
+        sh: shasum -a 256 .task/icon-edge/build/ngx_http_js_module.so | cut -d ' ' -f 1
+    cmds:
+      - for: { var: NGINX_HOSTS }
+        cmd: |
+          {{.SSH}} {{.SSH_USER}}@{{.ITEM}} '
+            set -eu
+            actual=$(sudo sha256sum /etc/nginx/ngx_http_js_module.so | cut -d " " -f 1)
+            test "$actual" = "{{.MODULE_SHA256}}"
+            sudo nginx -t
+            curl --fail --silent http://127.0.0.1:8055/status
+          ' | python3 -c 'import json, sys; s = json.load(sys.stdin); print(json.dumps(s)); assert s["fresh"] and not s["dirty"] and not s["locked"] and s["users"] > 0 and s["free_bytes"] > 0, s'
+
+  restart-icon-edge-check:
+    internal: true
+    cmds:
+      - '{{.SSH}} {{.SSH_USER}}@{{.ENTRY_HOST}} ''sudo systemctl restart isupipe-icons && sudo systemctl restart nginx'''
+
   check-fast-paths:
     desc: WAL同期境界・認証・アイコン同期とsnapshot指標のローカル検証
     deps: [build-sql-pool-metrics]
@@ -34,12 +118,13 @@ tasks:
       - '{{.DEPLOYCTL_DIR}}/deployctl apply-plan fast-paths -dry-run -config {{.DEPLOYCTL_CONFIG}} {{.DEPLOYCTL_COMMON}}'
 
   deploy-fast-paths:
-    desc: 3号機Go・2号機アイコン読取り・1号機nginxを配布して永続性を確認する
+    desc: 3号機Go・1号機アイコン読取りとnginxを配布して永続性を確認する
     preconditions:
       - sh: test ! -f '{{.RUN_STATE_FILE}}'
         msg: active benchmark exists
     cmds:
       - task: inspect-fast-paths
+      - task: build-icon-edge-module
       - task: gen
       - task: build
       - task: inspect-post-wal
@@ -533,7 +618,7 @@ tasks:
           '
       - '{{.SSH}} {{.SSH_USER}}@{{.ENTRY_HOST}} ''mkdir -p {{.SMOKE_REMOTE_DIR}}'''
       - '{{.RSYNC}} {{.SMOKE_TOOL_DIR}}/smoke {{.SSH_USER}}@{{.ENTRY_HOST}}:{{.SMOKE_REMOTE_DIR}}/smoke'
-      - '{{.SSH}} {{.SSH_USER}}@{{.ENTRY_HOST}} ''{{.SMOKE_REMOTE_DIR}}/smoke {{.SMOKE_ARGS}} -icons-phase "{{.ICON_SMOKE_PHASE | default ""}}" -registration-phase "{{.REGISTRATION_SMOKE_PHASE | default ""}}" -references-phase "{{.REFERENCES_SMOKE_PHASE | default ""}}" -mutations-phase "{{.MUTATIONS_SMOKE_PHASE | default ""}}" -dns-server {{.DNS_IP}}:53 -dns-address {{.DNS_RECORD_ADDRESS}}'''
+      - '{{.SSH}} {{.SSH_USER}}@{{.ENTRY_HOST}} ''{{.SMOKE_REMOTE_DIR}}/smoke {{.SMOKE_ARGS}} -icons-phase "{{.ICON_SMOKE_PHASE | default ""}}" -icon-edge={{.ICON_EDGE_CHECK | default "false"}} -registration-phase "{{.REGISTRATION_SMOKE_PHASE | default ""}}" -references-phase "{{.REFERENCES_SMOKE_PHASE | default ""}}" -mutations-phase "{{.MUTATIONS_SMOKE_PHASE | default ""}}" -dns-server {{.DNS_IP}}:53 -dns-address {{.DNS_RECORD_ADDRESS}}'''
 
   setup-contest-assets:
     desc: 競技固有の依存サービス資材を取得
@@ -541,6 +626,7 @@ tasks:
 
   prepare-db-assets:
     desc: deployへ載せる前にDB資材を生成・検証する（deploy系のhook、既定は何もしない）
+    deps: [build-icon-edge-module]
 
   gen-contest-routing:
     desc: Taskfileの役割値からDB・DNS接続設定を生成する
@@ -556,6 +642,8 @@ tasks:
         ISUPIPE_ICON_READ_IP={{.ICON_READ_IP}}
         ISUPIPE_ICON_READ_LISTEN={{.ICON_READ_IP}}:{{.ICON_READ_PORT}}
         ISUPIPE_ICON_READ_URL=http://{{.ICON_READ_IP}}:{{.ICON_READ_PORT}}
+        ISUPIPE_ICON_READ_SOCKET={{.ICON_READ_SOCKET}}
+        ISUPIPE_ICON_EDGE_URL={{.ICON_EDGE_URL}}
         ISUPIPE_ICON_ORIGIN_IP={{.APP_ORIGIN_IP}}
         ISUPIPE_ICON_ORIGIN_URL=http://{{.APP_ORIGIN_IP}}:{{.LISTEN_PORT}}
         ENV
@@ -563,7 +651,7 @@ tasks:
         cat > nginx/conf.d/icon-read.conf <<'CONF'
         # GENERATED by task gen-contest-routing.
         upstream icon_read {
-          server {{.ICON_READ_IP}}:{{.ICON_READ_PORT}};
+          server unix:{{.ICON_READ_SOCKET}};
           server {{.APP_ORIGIN_IP}}:{{.LISTEN_PORT}} backup;
           keepalive 64;
         }

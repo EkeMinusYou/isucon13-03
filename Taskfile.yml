@@ -69,9 +69,11 @@ vars:
       isucon-1: 54.250.213.246
       isucon-2: 18.177.140.41
       isucon-3: 13.231.248.152
-  ICON_READ_HOSTS: isucon-2
+  ICON_READ_HOSTS: isucon-1
   ICON_READ_PORT: '8054'
   ICON_READ_IP: '{{index .IP (splitList " " .ICON_READ_HOSTS | first)}}'
+  ICON_READ_SOCKET: /run/isupipe-icons/http.sock
+  ICON_EDGE_URL: http://127.0.0.1:8055
   APP_HOSTS: isucon-3
   APP_TRAFFIC_HOSTS: isucon-3
   APP_ORIGIN_IP: '{{index .IP (splitList " " .APP_HOSTS | first)}}'
@@ -88,6 +90,7 @@ vars:
   DEPLOYCTL_FLAGS: >-
     -role dns={{splitList " " .DNS_HOSTS | join ","}}
     -role icon_read={{splitList " " .ICON_READ_HOSTS | join ","}}
+    -var icon_read_hosts={{splitList " " .ICON_READ_HOSTS | join ","}}
     -var dns_hosts={{splitList " " .DNS_HOSTS | join ","}}
     -var dns_control_url=http://{{.DNS_IP}}:{{.DNS_CONTROL_PORT}}
   SMOKE_ARGS: '-ingress {{$ips := list}}{{range (splitList " " .NGINX_HOSTS)}}{{$ips = append $ips (printf "%s:443" (index $.IP .))}}{{end}}{{join "," $ips}}'

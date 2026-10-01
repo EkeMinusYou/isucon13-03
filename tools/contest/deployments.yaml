@@ -2,6 +2,29 @@
 include: [../deployctl/deployments.yaml]
 
 deployments:
+  icon-edge-module:
+    uploads:
+      - {label: nginx njs module, role: nginx, local: .task/icon-edge/build/ngx_http_js_module.so, remote: /etc/nginx/ngx_http_js_module.so}
+    activations:
+      - label: verify module ABI without changing the running nginx configuration
+        role: nginx
+        script: |
+          set -eu
+          sudo chmod 0644 /etc/nginx/ngx_http_js_module.so
+          printf 'load_module /etc/nginx/ngx_http_js_module.so;\nevents {}\nhttp { js_shared_dict_zone zone=test:1m; }\n' | sudo tee /tmp/isupipe-icon-module-check.conf >/dev/null
+          sudo nginx -t -c /tmp/isupipe-icon-module-check.conf
+
+  icon-reader-roles:
+    activations:
+      - label: stop icon reader outside its assigned hosts
+        role: all
+        script: |
+          set -eu
+          case ',{var:icon_read_hosts},' in
+            *',{host},'*) sudo systemctl is-active --quiet isupipe-icons ;;
+            *) if sudo systemctl cat isupipe-icons >/dev/null 2>&1; then sudo systemctl disable --now isupipe-icons; fi ;;
+          esac
+
   icon-read:
     uploads:
       - {label: icon reader binary, role: icon_read, local: '{var:app_dir}/isupipe', remote: /usr/local/bin/isupipe-icon-read}
@@ -20,7 +43,8 @@ deployments:
 
   nginx:
     uploads:
-      - {label: nginx configuration, role: nginx, local: nginx/, remote: /etc/nginx/, excludes: [tls/], delete: true, validate: sudo nginx -t}
+      - {label: nginx njs module, role: nginx, local: .task/icon-edge/build/ngx_http_js_module.so, remote: /etc/nginx/ngx_http_js_module.so}
+      - {label: nginx configuration, role: nginx, local: nginx/, remote: /etc/nginx/, excludes: [tls/, ngx_http_js_module.so], delete: true, validate: sudo nginx -t}
       - {label: public assets, role: nginx, local: webapp/public/, remote: /home/isucon/webapp/public/, delete: true}
     activations:
       - label: reload or start nginx
@@ -191,14 +215,23 @@ deployments:
           esac
 
 plans:
+  icon-edge:
+    deployments:
+      icon-edge-module: {}
+      app: {needs: [icon-edge-module]}
+      icon-read: {needs: [app]}
+      nginx: {needs: [icon-read]}
+      icon-reader-roles: {needs: [nginx]}
   fast-paths-initialize:
     deployments:
       app-initialize: {}
   fast-paths:
     deployments:
-      app: {}
+      icon-edge-module: {}
+      app: {needs: [icon-edge-module]}
       icon-read: {needs: [app]}
       nginx: {needs: [icon-read]}
+      icon-reader-roles: {needs: [nginx]}
   nginx-split:
     deployments:
       app: {}
@@ -207,13 +240,15 @@ plans:
       nginx-retire: {needs: [ingress-dns]}
   deploy-all:
     deployments:
-      topology-config: {}
+      icon-edge-module: {}
+      topology-config: {needs: [icon-edge-module]}
       mysql: {needs: [topology-config]}
       db-access: {needs: [mysql]}
       dns-restart: {needs: [db-access]}
       app-after-schema: {needs: [dns-restart]}
       icon-read: {needs: [app-after-schema]}
       nginx: {needs: [icon-read]}
+      icon-reader-roles: {needs: [nginx]}
   db-recreate:
     deployments:
       topology-config: {}
@@ -226,9 +261,12 @@ plans:
       dns-start: {needs: [db-schema]}
       app-after-schema: {needs: [dns-start]}
       icon-read: {needs: [app-after-schema]}
+      icon-reader-roles: {needs: [icon-read]}
       app-initialize: {needs: [icon-read]}
   roles:
     deployments:
       roles-off: {}
       roles-on: {needs: [roles-off]}
       dns-roles: {needs: [roles-on]}
+      icon-read: {needs: [roles-on]}
+      icon-reader-roles: {needs: [icon-read]}

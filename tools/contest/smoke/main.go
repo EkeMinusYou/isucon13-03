@@ -24,6 +24,7 @@ import (
 func main() {
 	targets := flag.String("ingress", "127.0.0.1:443", "comma separated ingress addresses")
 	iconsPhase := flag.String("icons-phase", "", "write or read to check durable icon updates")
+	iconEdge := flag.Bool("icon-edge", false, "verify nginx direct 304 and its access log identity")
 	registrationPhase := flag.String("registration-phase", "", "write or read to check durable user and DNS registration")
 	referencesPhase := flag.String("references-phase", "", "write or read to check reference publication and reload")
 	mutationsPhase := flag.String("mutations-phase", "", "write or read to check durable WAL events and statistics")
@@ -110,6 +111,12 @@ func main() {
 				log.Fatal(err)
 			}
 			fmt.Printf("%s: icon %s, content/hash/ETag, conditional GET and internal access checks passed\n", addr, *iconsPhase)
+		}
+		if *iconEdge {
+			if err := checkIconEdge(client); err != nil {
+				log.Fatal(err)
+			}
+			fmt.Printf("%s: nginx direct 304, current image and logged session identity passed\n", addr)
 		}
 		if *registrationPhase != "" {
 			if err := checkRegistration(client, *dnsServer, *dnsAddress, *registrationPhase == "write"); err != nil {

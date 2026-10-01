@@ -9,6 +9,8 @@ Group=isucon
 EnvironmentFile=/home/isucon/env.sh
 EnvironmentFile=/home/isucon/topology.env
 Environment=ISUPIPE_MODE=icon-read
+RuntimeDirectory=isupipe-icons
+RuntimeDirectoryMode=0755
 ExecStart=/usr/local/bin/isupipe-icon-read
 Restart=on-failure
 RestartSec=1
