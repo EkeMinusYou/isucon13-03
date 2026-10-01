@@ -16,10 +16,7 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 
-	"github.com/gorilla/sessions"
-	"github.com/labstack/echo-contrib/session"
 	echolog "github.com/labstack/gommon/log"
 )
 
@@ -117,6 +114,7 @@ func initializeHandler(c echo.Context) error {
 	if writer := currentMutations.Swap(nil); writer != nil {
 		writer.close()
 	}
+	invalidateIconReplica()
 	if _, err := dbConn.ExecContext(c.Request().Context(), "UPDATE post_wal_state SET ready=FALSE WHERE id=1"); err != nil {
 		return mutationHTTPError(err)
 	}
@@ -164,6 +162,12 @@ func initializeHandler(c echo.Context) error {
 }
 
 func main() {
+	if os.Getenv("ISUPIPE_MODE") == "icon-read" {
+		if err := runIconRead(); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	if os.Getenv("ISUPIPE_MODE") == "dns-control" {
 		if err := runDNSControl(); err != nil {
 			log.Fatal(err)
@@ -171,18 +175,14 @@ func main() {
 		return
 	}
 	e := echo.New()
-	e.Debug = true
-	e.Logger.SetLevel(echolog.DEBUG)
-	e.Use(middleware.Logger())
-	cookieStore := sessions.NewCookieStore(secret)
-	cookieStore.Options.Domain = "*.u.isucon.dev"
-	e.Use(session.Middleware(cookieStore))
+	e.Logger.SetLevel(echolog.WARN)
 	e.Use(measurementSession)
 	e.Use(applicationLifecycle)
 	// e.Use(middleware.Recover())
 
 	// 初期化
 	e.POST("/api/initialize", initializeHandler)
+	e.GET("/_internal/icon-state", iconSnapshotHandler)
 
 	// top
 	e.GET("/api/tag", getTagHandler)

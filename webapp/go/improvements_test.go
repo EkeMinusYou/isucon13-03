@@ -14,9 +14,7 @@ import (
 	"time"
 
 	"github.com/go-sql-driver/mysql"
-	"github.com/gorilla/sessions"
 	"github.com/jmoiron/sqlx"
-	"github.com/labstack/echo-contrib/session"
 	"github.com/labstack/echo/v4"
 )
 
@@ -137,8 +135,7 @@ UPDATE livecomment_reports SET comment_created_at=livecomment_id;`); err != nil 
 	}
 	resetTestPosts(t, db)
 	e := echo.New()
-	store := sessions.NewCookieStore(secret)
-	e.Use(session.Middleware(store))
+	store := &struct{}{}
 	e.GET("/api/user/:username/statistics", getUserStatisticsHandler)
 	e.GET("/api/livestream/:livestream_id/statistics", getLivestreamStatisticsHandler)
 	e.POST("/api/livestream/:livestream_id/moderate", moderateHandler)
@@ -274,7 +271,7 @@ UPDATE livecomment_reports SET comment_created_at=livecomment_id;`); err != nil 
 
 }
 
-func improvementRequest(t *testing.T, e *echo.Echo, store *sessions.CookieStore, method, path, body string, userID int64) *httptest.ResponseRecorder {
+func improvementRequest(t *testing.T, e *echo.Echo, store *struct{}, method, path, body string, userID int64) *httptest.ResponseRecorder {
 	t.Helper()
 	req := improvementHTTPRequest(t, store, method, path, body, userID)
 	rec := httptest.NewRecorder()
@@ -282,22 +279,15 @@ func improvementRequest(t *testing.T, e *echo.Echo, store *sessions.CookieStore,
 	return rec
 }
 
-func improvementHTTPRequest(t *testing.T, store *sessions.CookieStore, method, path, body string, userID int64) *http.Request {
+func improvementHTTPRequest(t *testing.T, store *struct{}, method, path, body string, userID int64) *http.Request {
 	t.Helper()
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	sess, err := store.New(req, defaultSessionIDKey)
+	value, _, err := encodeSession(userID, time.Now().Add(time.Minute).Unix())
 	if err != nil {
 		t.Fatal(err)
 	}
-	sess.Values[defaultUserIDKey] = userID
-	sess.Values[defaultSessionExpiresKey] = time.Now().Add(time.Minute).Unix()
-	cookieResponse := httptest.NewRecorder()
-	if err := store.Save(req, cookieResponse, sess); err != nil {
-		t.Fatal(err)
-	}
-	for _, cookie := range cookieResponse.Result().Cookies() {
-		req.AddCookie(cookie)
-	}
+	req.AddCookie(&http.Cookie{Name: defaultSessionIDKey, Value: value})
+
 	return req
 }

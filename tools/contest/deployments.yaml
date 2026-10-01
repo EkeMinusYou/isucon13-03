@@ -2,6 +2,22 @@
 include: [../deployctl/deployments.yaml]
 
 deployments:
+  icon-read:
+    uploads:
+      - {label: icon reader binary, role: icon_read, local: '{var:app_dir}/isupipe', remote: /usr/local/bin/isupipe-icon-read}
+      - {label: icon reader unit, role: icon_read, local: etc/systemd/system/isupipe-icons.service, remote: /etc/systemd/system/isupipe-icons.service}
+      - {label: icon reader topology, role: icon_read, local: tools/contest/generated/topology.env, remote: /home/isucon/topology.env}
+    activations:
+      - label: enable and restart icon reader
+        role: icon_read
+        script: |
+          set -eu
+          sudo chmod 0755 /usr/local/bin/isupipe-icon-read
+          sudo systemctl daemon-reload
+          sudo systemctl enable isupipe-icons
+          sudo systemctl restart isupipe-icons
+          sudo systemctl is-active --quiet isupipe-icons
+
   nginx:
     uploads:
       - {label: nginx configuration, role: nginx, local: nginx/, remote: /etc/nginx/, excludes: [tls/], delete: true, validate: sudo nginx -t}
@@ -181,6 +197,14 @@ deployments:
           esac
 
 plans:
+  fast-paths-initialize:
+    deployments:
+      app-initialize: {}
+  fast-paths:
+    deployments:
+      app: {}
+      icon-read: {needs: [app]}
+      nginx: {needs: [icon-read]}
   nginx-split:
     deployments:
       app: {}
@@ -194,7 +218,8 @@ plans:
       db-access: {needs: [mysql]}
       dns-restart: {needs: [db-access]}
       app-after-schema: {needs: [dns-restart]}
-      nginx: {needs: [app-after-schema]}
+      icon-read: {needs: [app-after-schema]}
+      nginx: {needs: [icon-read]}
   db-recreate:
     deployments:
       topology-config: {}
@@ -206,7 +231,8 @@ plans:
       db-schema: {needs: [db-access]}
       dns-start: {needs: [db-schema]}
       app-after-schema: {needs: [dns-start]}
-      app-initialize: {needs: [app-after-schema]}
+      icon-read: {needs: [app-after-schema]}
+      app-initialize: {needs: [icon-read]}
   roles:
     deployments:
       roles-off: {}

@@ -146,6 +146,8 @@ func (s *postStore) applyBarrier(ctx context.Context, state *postStream, op muta
 		return err
 	}
 	if moderation, ok := op.(*moderationMutation); ok {
+		state.rowsMu.Lock()
+		defer state.rowsMu.Unlock()
 		deleted := make(map[int64]bool, len(moderation.deleted))
 		for _, id := range moderation.deleted {
 			deleted[id] = true

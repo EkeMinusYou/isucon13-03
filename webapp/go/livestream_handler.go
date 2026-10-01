@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/labstack/echo-contrib/session"
 	"github.com/labstack/echo/v4"
 )
 
@@ -77,9 +76,7 @@ func reserveLivestreamHandler(c echo.Context) error {
 	}
 
 	// error already checked
-	sess, _ := session.Get(defaultSessionIDKey, c)
-	// existence already checked
-	userID := sess.Values[defaultUserIDKey].(int64)
+	userID := sessionUserID(c)
 
 	var req *ReserveLivestreamRequest
 	if err := json.NewDecoder(c.Request().Body).Decode(&req); err != nil {
@@ -255,9 +252,7 @@ func getMyLivestreamsHandler(c echo.Context) error {
 	defer tx.Rollback()
 
 	// error already checked
-	sess, _ := session.Get(defaultSessionIDKey, c)
-	// existence already checked
-	userID := sess.Values[defaultUserIDKey].(int64)
+	userID := sessionUserID(c)
 
 	var livestreamModels []*LivestreamModel
 	if err := tx.SelectContext(ctx, &livestreamModels, "SELECT * FROM livestreams WHERE user_id = ?", userID); err != nil {
@@ -323,9 +318,7 @@ func enterLivestreamHandler(c echo.Context) error {
 	}
 
 	// error already checked
-	sess, _ := session.Get(defaultSessionIDKey, c)
-	// existence already checked
-	userID := sess.Values[defaultUserIDKey].(int64)
+	userID := sessionUserID(c)
 
 	livestreamID, err := strconv.Atoi(c.Param("livestream_id"))
 	if err != nil {
@@ -347,9 +340,7 @@ func exitLivestreamHandler(c echo.Context) error {
 	}
 
 	// error already checked
-	sess, _ := session.Get(defaultSessionIDKey, c)
-	// existence already checked
-	userID := sess.Values[defaultUserIDKey].(int64)
+	userID := sessionUserID(c)
 
 	livestreamID, err := strconv.Atoi(c.Param("livestream_id"))
 	if err != nil {
@@ -415,9 +406,7 @@ func getLivecommentReportsHandler(c echo.Context) error {
 	}
 
 	// error already check
-	sess, _ := session.Get(defaultSessionIDKey, c)
-	// existence already check
-	userID := sess.Values[defaultUserIDKey].(int64)
+	userID := sessionUserID(c)
 
 	if ref.model.UserID != userID {
 		return echo.NewHTTPError(http.StatusForbidden, "can't get other streamer's livecomment reports")

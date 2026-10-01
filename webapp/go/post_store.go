@@ -20,6 +20,7 @@ const (
 )
 
 type postStream struct {
+	rowsMu    sync.RWMutex
 	gate      chan struct{}
 	comments  []LivecommentModel
 	reactions []ReactionModel
@@ -36,6 +37,8 @@ func (s *postStream) acquire(ctx context.Context) error {
 }
 func (s *postStream) release() { <-s.gate }
 func (s *postStream) insertComment(row LivecommentModel) {
+	s.rowsMu.Lock()
+	defer s.rowsMu.Unlock()
 	i := sort.Search(len(s.comments), func(i int) bool {
 		r := s.comments[i]
 		return r.CreatedAt < row.CreatedAt || (r.CreatedAt == row.CreatedAt && r.ID < row.ID)
@@ -45,6 +48,8 @@ func (s *postStream) insertComment(row LivecommentModel) {
 	s.comments[i] = row
 }
 func (s *postStream) insertReaction(row ReactionModel) {
+	s.rowsMu.Lock()
+	defer s.rowsMu.Unlock()
 	i := sort.Search(len(s.reactions), func(i int) bool {
 		r := s.reactions[i]
 		return r.CreatedAt < row.CreatedAt || (r.CreatedAt == row.CreatedAt && r.ID < row.ID)
@@ -75,6 +80,11 @@ type postStore struct {
 	durableBytes, appliedBytes atomic.Int64
 	syncs, syncNanos, records  atomic.Uint64
 	nextComment, nextReaction  int64
+	walMu                      sync.Mutex
+	pending                    []postBatch
+	syncWake                   chan struct{}
+	writtenSeq                 uint64
+	writtenBytes               int64
 }
 
 func postsUnavailable(reason string) error {
@@ -136,10 +146,11 @@ func (s *postStore) timeline(ctx context.Context, stream int64, limit int, comme
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := state.acquire(ctx); err != nil {
+	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
-	defer state.release()
+	state.rowsMu.RLock()
+	defer state.rowsMu.RUnlock()
 	if err := s.check(); err != nil {
 		return nil, nil, err
 	}

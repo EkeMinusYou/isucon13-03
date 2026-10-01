@@ -14,11 +14,11 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
-	"github.com/gorilla/sessions"
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v4"
 )
@@ -89,8 +89,8 @@ func TestPostSyncPublicationAndCancellation(t *testing.T) {
 	readCtx, stop := context.WithTimeout(context.Background(), 5*time.Millisecond)
 	_, _, err := s.timeline(readCtx, 1, -1, false)
 	stop()
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("read bypassed pending publication: %v", err)
+	if err != nil {
+		t.Fatalf("read of committed state blocked on Sync: %v", err)
 	}
 	unblock.Do(func() { close(release) })
 	if err := <-done; err != nil {
@@ -122,7 +122,11 @@ func TestPostSyncFailureAndGrouping(t *testing.T) {
 		for i := range batch {
 			batch[i] = postRequest{record: postRecord{Kind: "reaction", UserID: 1, StreamID: int64(i + 1), Text: "grouped"}, done: make(chan postResult, 1)}
 		}
-		s.writePostBatch(batch)
+		for _, r := range batch {
+			s.requests <- r
+		}
+		s.writers.Add(1)
+		go s.writePosts()
 		for i, r := range batch {
 			result := <-r.done
 			if result.err != nil || result.record.ID != int64(i+1) {
@@ -133,6 +137,73 @@ func TestPostSyncFailureAndGrouping(t *testing.T) {
 			t.Fatal("independent streams did not share Sync")
 		}
 	})
+}
+
+func TestPostAppendOverlapsSyncWithoutEarlyAcknowledgement(t *testing.T) {
+	s := writerTestStore(t)
+	started := make(chan int, 2)
+	releases := []chan struct{}{make(chan struct{}), make(chan struct{})}
+	var once [2]sync.Once
+	t.Cleanup(func() {
+		for i := range once {
+			once[i].Do(func() { close(releases[i]) })
+		}
+	})
+	var calls atomic.Int64
+	s.syncFile = func() error {
+		i := int(calls.Add(1) - 1)
+		started <- i
+		<-releases[i]
+		return s.file.Sync()
+	}
+	s.writers.Add(1)
+	go s.writePosts()
+	first, second := &ReactionModel{LivestreamID: 1, EmojiName: "first"}, &ReactionModel{LivestreamID: 2, EmojiName: "second"}
+	done1, done2 := make(chan error, 1), make(chan error, 1)
+	go func() { done1 <- s.submit(context.Background(), 1, &reactionMutation{model: first}) }()
+	if i := <-started; i != 0 {
+		t.Fatal("unexpected first Sync")
+	}
+	go func() { done2 <- s.submit(context.Background(), 2, &reactionMutation{model: second}) }()
+	deadline := time.Now().Add(time.Second)
+	for {
+		s.walMu.Lock()
+		pending := len(s.pending)
+		s.walMu.Unlock()
+		if pending != 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("append blocked on previous Sync")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	once[0].Do(func() { close(releases[0]) })
+	if err := <-done1; err != nil {
+		t.Fatal(err)
+	}
+	if i := <-started; i != 1 {
+		t.Fatal("unexpected second Sync")
+	}
+	if s.durableSeq.Load() != 1 {
+		t.Fatal("first Sync acknowledged a later frame")
+	}
+	select {
+	case err := <-done2:
+		t.Fatalf("second frame acknowledged early: %v", err)
+	default:
+	}
+	_, rows, err := s.timeline(context.Background(), 2, -1, false)
+	if err != nil || len(rows) != 0 {
+		t.Fatal("unsynchronized later frame became visible")
+	}
+	once[1].Do(func() { close(releases[1]) })
+	if err := <-done2; err != nil {
+		t.Fatal(err)
+	}
+	if second.ID <= first.ID || s.durableSeq.Load() != 2 {
+		t.Fatal("sequence or IDs lost")
+	}
 }
 
 func resetTestPosts(t *testing.T, db *sqlx.DB) string {
@@ -155,7 +226,7 @@ func resetTestPosts(t *testing.T, db *sqlx.DB) string {
 	return dir
 }
 
-func checkDurablePosts(t *testing.T, db *sqlx.DB, e *echo.Echo, cookies *sessions.CookieStore) {
+func checkDurablePosts(t *testing.T, db *sqlx.DB, e *echo.Echo, cookies *struct{}) {
 	ctx := context.Background()
 	clearRows := func() {
 		if old := currentMutations.Swap(nil); old != nil {

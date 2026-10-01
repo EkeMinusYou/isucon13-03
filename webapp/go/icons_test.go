@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gorilla/sessions"
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v4"
 )
@@ -75,7 +74,7 @@ func TestIconFilesAndConditionalGET(t *testing.T) {
 	}
 }
 
-func checkIconsMySQL(t *testing.T, db *sqlx.DB, e *echo.Echo, store *sessions.CookieStore) {
+func checkIconsMySQL(t *testing.T, db *sqlx.DB, e *echo.Echo, store *struct{}) {
 	requests := make([]*http.Request, 0, 4)
 	for i, id := range []int64{1, 1, 2, 3} {
 		body, _ := json.Marshal(PostIconRequest{Image: []byte(fmt.Sprintf("concurrent-%d", i))})

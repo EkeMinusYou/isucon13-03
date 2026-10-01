@@ -14,12 +14,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gorilla/sessions"
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v4"
 )
 
-func checkResponseBatching(t *testing.T, db *sqlx.DB, e *echo.Echo, store *sessions.CookieStore) {
+func checkResponseBatching(t *testing.T, db *sqlx.DB, e *echo.Echo, store *struct{}) {
 	ctx := context.Background()
 	t.Run("commit_publication", func(t *testing.T) {
 		checkReferenceCommits(t, db)
@@ -253,7 +252,7 @@ func checkReferenceCommits(t *testing.T, db *sqlx.DB) {
 	}
 }
 
-func checkReservationAtomicity(t *testing.T, db *sqlx.DB, e *echo.Echo, store *sessions.CookieStore) {
+func checkReservationAtomicity(t *testing.T, db *sqlx.DB, e *echo.Echo, store *struct{}) {
 	const start int64 = 1700874000
 	if _, err := db.Exec(`INSERT INTO reservation_slots (id,slot,start_at,end_at) VALUES
  (1,1,?,?), (2,0,?,?), (3,2,?,?), (4,7,?,?)`,
@@ -275,19 +274,12 @@ func checkReservationAtomicity(t *testing.T, db *sqlx.DB, e *echo.Echo, store *s
 	for i := range requests {
 		req := httptest.NewRequest(http.MethodPost, "/api/livestream/reservation", strings.NewReader(body(start+3600)))
 		req.Header.Set("Content-Type", "application/json")
-		sess, err := store.New(req, defaultSessionIDKey)
+		value, _, err := encodeSession(int64(i+1), time.Now().Add(time.Minute).Unix())
 		if err != nil {
 			t.Fatal(err)
 		}
-		sess.Values[defaultUserIDKey] = int64(i + 1)
-		sess.Values[defaultSessionExpiresKey] = time.Now().Add(time.Minute).Unix()
-		cookieResponse := httptest.NewRecorder()
-		if err := store.Save(req, cookieResponse, sess); err != nil {
-			t.Fatal(err)
-		}
-		for _, cookie := range cookieResponse.Result().Cookies() {
-			req.AddCookie(cookie)
-		}
+		req.AddCookie(&http.Cookie{Name: defaultSessionIDKey, Value: value})
+
 		requests[i] = req
 	}
 	ready := make(chan struct{})

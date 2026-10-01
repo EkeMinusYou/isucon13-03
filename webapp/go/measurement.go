@@ -1,14 +1,10 @@
 package main
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"time"
 
-	"github.com/labstack/echo-contrib/session"
 	"github.com/labstack/echo/v4"
 )
 
@@ -20,8 +16,16 @@ func measurementHandler(maxSeconds int) http.Handler {
 	mux.HandleFunc("/debug/sql-pools", func(w http.ResponseWriter, r *http.Request) {
 		stats := dbConn.Stats()
 		var posts map[string]any
+		metrics := make(map[string]any)
 		if store := currentMutations.Load(); store != nil {
 			posts = store.metrics()
+			metrics["wal_records_total"] = posts["records"]
+			metrics["wal_syncs_total"] = posts["syncs"]
+			metrics["wal_sync_ns_total"] = posts["sync_ns"]
+			metrics["wal_pending_bytes"] = posts["pending_bytes"]
+			metrics["wal_bytes"] = posts["wal_bytes"]
+			metrics["wal_durable_seq"] = posts["durable_seq"]
+			metrics["wal_applied_seq"] = posts["applied_seq"]
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -29,6 +33,7 @@ func measurementHandler(maxSeconds int) http.Handler {
 			"started_unix_ms":  measurementStarted.UnixMilli(),
 			"captured_unix_ms": time.Now().UnixMilli(),
 			"post_wal":         posts,
+			"metrics":          metrics,
 			"pools": []map[string]any{{
 				"database_host": "127.0.0.1", "name": "isupipe", "role": "primary", "shard": 0,
 				"max_open_connections": stats.MaxOpenConnections,
@@ -44,19 +49,11 @@ func measurementHandler(maxSeconds int) http.Handler {
 
 func measurementSession(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		// Before runs at header commit, after login has updated the session.
 		c.Response().Before(func() {
-			sess, err := session.Get(defaultSessionIDKey, c)
-			if err != nil {
-				return
+			sess, err := requestSession(c)
+			if err == nil {
+				c.Response().Header().Set("X-Measurement-Session-ID", sess.ID)
 			}
-			id, ok := sess.Values[defaultSessionIDKey].(string)
-			if !ok || id == "" {
-				return
-			}
-			mac := hmac.New(sha256.New, secret)
-			_, _ = mac.Write([]byte("measurement-session:" + id))
-			c.Response().Header().Set("X-Measurement-Session-ID", hex.EncodeToString(mac.Sum(nil)))
 		})
 		return next(c)
 	}

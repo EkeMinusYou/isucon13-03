@@ -7,20 +7,11 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/google/uuid"
-	"github.com/gorilla/sessions"
-	"github.com/labstack/echo-contrib/session"
 	"github.com/labstack/echo/v4"
 	"golang.org/x/crypto/bcrypt"
 )
 
-const (
-	defaultSessionIDKey      = "SESSIONID"
-	defaultSessionExpiresKey = "EXPIRES"
-	defaultUserIDKey         = "USERID"
-	defaultUsernameKey       = "USERNAME"
-	bcryptDefaultCost        = bcrypt.MinCost
-)
+const bcryptDefaultCost = bcrypt.MinCost
 
 var fallbackImage = "../img/NoImage.jpg"
 
@@ -89,9 +80,7 @@ func getMeHandler(c echo.Context) error {
 	}
 
 	// error already checked
-	sess, _ := session.Get(defaultSessionIDKey, c)
-	// existence already checked
-	userID := sess.Values[defaultUserIDKey].(int64)
+	userID := sessionUserID(c)
 
 	user, err := currentReferences.Load().user(ctx, userID)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -222,28 +211,12 @@ func loginHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to compare hash and password: "+err.Error())
 	}
 
-	sessionEndAt := time.Now().Add(1 * time.Hour)
-
-	sessionID := uuid.NewString()
-
-	sess, err := session.Get(defaultSessionIDKey, c)
+	value, sess, err := encodeSession(userModel.ID, time.Now().Add(time.Hour).Unix())
 	if err != nil {
-		return echo.NewHTTPError(http.StatusUnauthorized, "failed to get session")
+		return err
 	}
-
-	sess.Options = &sessions.Options{
-		Domain: "u.isucon.dev",
-		MaxAge: int(60000),
-		Path:   "/",
-	}
-	sess.Values[defaultSessionIDKey] = sessionID
-	sess.Values[defaultUserIDKey] = userModel.ID
-	sess.Values[defaultUsernameKey] = userModel.Name
-	sess.Values[defaultSessionExpiresKey] = sessionEndAt.Unix()
-
-	if err := sess.Save(c.Request(), c.Response()); err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to save session: "+err.Error())
-	}
+	http.SetCookie(c.Response(), &http.Cookie{Name: defaultSessionIDKey, Value: value, Domain: "u.isucon.dev", Path: "/", MaxAge: 60000, HttpOnly: true, Secure: true})
+	c.Set("auth_session", sess)
 
 	return c.NoContent(http.StatusOK)
 }
@@ -268,28 +241,4 @@ func getUserHandler(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, user)
-}
-
-func verifyUserSession(c echo.Context) error {
-	sess, err := session.Get(defaultSessionIDKey, c)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusUnauthorized, "failed to get session")
-	}
-
-	sessionExpires, ok := sess.Values[defaultSessionExpiresKey]
-	if !ok {
-		return echo.NewHTTPError(http.StatusForbidden, "failed to get EXPIRES value from session")
-	}
-
-	_, ok = sess.Values[defaultUserIDKey].(int64)
-	if !ok {
-		return echo.NewHTTPError(http.StatusUnauthorized, "failed to get USERID value from session")
-	}
-
-	now := time.Now()
-	if now.Unix() > sessionExpires.(int64) {
-		return echo.NewHTTPError(http.StatusUnauthorized, "session has expired")
-	}
-
-	return nil
 }

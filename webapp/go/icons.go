@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/google/uuid"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -13,11 +14,11 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/labstack/echo-contrib/session"
 	"github.com/labstack/echo/v4"
 )
 
 type iconEntry struct {
+	name string
 	id   int64
 	mu   sync.Mutex
 	hash atomic.Value
@@ -30,6 +31,10 @@ type iconStore struct {
 	mu           sync.RWMutex
 	byName       map[string]*iconEntry
 	byID         map[int64]*iconEntry
+	epoch        string
+	revision     uint64
+	changeBase   uint64
+	changes      []iconChange
 }
 
 var currentIcons *iconStore
@@ -142,7 +147,7 @@ func (s *iconStore) load(ctx context.Context) error {
 			}
 			checked[hash] = true
 		}
-		entry := &iconEntry{id: user.ID}
+		entry := &iconEntry{id: user.ID, name: strings.TrimRight(user.Name, " ")}
 		entry.hash.Store(hash)
 		// The users' utf8mb4_bin collation ignores trailing ASCII spaces.
 		byName[strings.TrimRight(user.Name, " ")] = entry
@@ -150,17 +155,22 @@ func (s *iconStore) load(ctx context.Context) error {
 	}
 	s.mu.Lock()
 	s.byName, s.byID = byName, byID
+	s.epoch = uuid.NewString()
+	s.revision, s.changeBase, s.changes = 0, 0, nil
 	s.mu.Unlock()
 	return nil
 }
 
 func (s *iconStore) addUser(id int64, name, hash string) *iconEntry {
-	entry := &iconEntry{id: id}
+	entry := &iconEntry{id: id, name: strings.TrimRight(name, " ")}
 	entry.hash.Store(hash)
 	s.mu.Lock()
 	s.byName[strings.TrimRight(name, " ")] = entry
 	s.byID[id] = entry
+	s.changedIcon(entry.name, hash)
+	update := iconUpdate{Epoch: s.epoch, Revision: s.revision, Name: entry.name, Hash: hash}
 	s.mu.Unlock()
+	notifyIconReplica(update)
 	return entry
 }
 
@@ -221,8 +231,7 @@ func postIconHandler(c echo.Context) error {
 	if err := verifyUserSession(c); err != nil {
 		return err
 	}
-	sess, _ := session.Get(defaultSessionIDKey, c)
-	userID := sess.Values[defaultUserIDKey].(int64)
+	userID := sessionUserID(c)
 	var req PostIconRequest
 	if err := json.NewDecoder(c.Request().Body).Decode(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "failed to decode the request body as json")
@@ -263,6 +272,11 @@ func postIconHandler(c echo.Context) error {
 	if err := tx.Commit(); err != nil {
 		return err
 	}
+	s.mu.Lock()
 	entry.hash.Store(hash)
+	s.changedIcon(entry.name, hash)
+	update := iconUpdate{Epoch: s.epoch, Revision: s.revision, Name: entry.name, Hash: hash}
+	s.mu.Unlock()
+	notifyIconReplica(update)
 	return c.JSON(http.StatusCreated, PostIconResponse{ID: iconID})
 }

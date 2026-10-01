@@ -41,7 +41,7 @@ vars:
   INITIALIZE_PATH: /api/initialize
   CONFIG_CHECK_COMMAND: 'task config-check && task config-check-pdns'
   SETUP_SECRET_ALLOWLIST: ''
-  MANAGED_SERVICES: '{{.SERVICE}},nginx,mysql,pdns,isupipe-dns'
+  MANAGED_SERVICES: '{{.SERVICE}},nginx,mysql,pdns,isupipe-dns,isupipe-icons'
   # <<< contest values <<<
 
   SSH_USER: ubuntu
@@ -69,8 +69,12 @@ vars:
       isucon-1: 54.250.213.246
       isucon-2: 18.177.140.41
       isucon-3: 13.231.248.152
+  ICON_READ_HOSTS: isucon-2
+  ICON_READ_PORT: '8054'
+  ICON_READ_IP: '{{index .IP (splitList " " .ICON_READ_HOSTS | first)}}'
   APP_HOSTS: isucon-3
   APP_TRAFFIC_HOSTS: isucon-3
+  APP_ORIGIN_IP: '{{index .IP (splitList " " .APP_HOSTS | first)}}'
   NGINX_HOSTS: isucon-1
   PDNS_HOSTS: isucon-1
   DNS_CONTROL_PORT: '8053'
@@ -83,6 +87,7 @@ vars:
   CONF_SRC: isucon-3
   DEPLOYCTL_FLAGS: >-
     -role dns={{splitList " " .PDNS_HOSTS | join ","}}
+    -role icon_read={{splitList " " .ICON_READ_HOSTS | join ","}}
     -var dns_hosts={{splitList " " .PDNS_HOSTS | join ","}}
   SMOKE_ARGS: '-ingress {{$ips := list}}{{range (splitList " " .NGINX_HOSTS)}}{{$ips = append $ips (printf "%s:443" (index $.IP .))}}{{end}}{{join "," $ips}}'
   # <<< contest values <<<

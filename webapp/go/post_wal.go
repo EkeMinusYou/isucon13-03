@@ -222,6 +222,7 @@ func openPostStore(ctx context.Context, db *sqlx.DB, dir string) (*postStore, er
 	}
 	ok = true
 	s.syncFile = file.Sync
+	s.writtenSeq, s.writtenBytes = seq, offset
 	s.writers.Add(1)
 	go s.writePosts()
 	s.projectors.Add(1)
@@ -293,11 +294,22 @@ func writePostBytes(writer io.Writer, data []byte) error {
 	return nil
 }
 
+type postBatch struct {
+	requests []postRequest
+	records  []postRecord
+	end      int64
+}
+
 func (s *postStore) writePosts() {
 	defer s.writers.Done()
+	s.writtenSeq = s.durableSeq.Load()
+	s.writtenBytes = s.durableBytes.Load()
+	s.syncWake = make(chan struct{}, 1)
+	done := make(chan struct{})
+	go func() { defer close(done); s.syncPosts() }()
+	defer func() { close(s.syncWake); <-done }()
 	for first := range s.requests {
 		batch := []postRequest{first}
-		timer := time.NewTimer(time.Millisecond)
 	collect:
 		for len(batch) < 64 {
 			select {
@@ -306,19 +318,18 @@ func (s *postStore) writePosts() {
 					break collect
 				}
 				batch = append(batch, r)
-			case <-timer.C:
+			default:
 				break collect
 			}
 		}
-		timer.Stop()
-		s.writePostBatch(batch)
+		s.appendPostBatch(batch)
 	}
 }
 
-func (s *postStore) writePostBatch(batch []postRequest) {
+func (s *postStore) appendPostBatch(batch []postRequest) {
 	err := s.check()
 	records := make([]postRecord, len(batch))
-	seq := s.durableSeq.Load()
+	seq := s.writtenSeq
 	if err == nil {
 		for i, r := range batch {
 			records[i] = r.record
@@ -340,28 +351,69 @@ func (s *postStore) writePostBatch(batch []postRequest) {
 	if err == nil {
 		frame, err = encodePostFrame(records)
 	}
-	if err == nil && (s.durableBytes.Load()+int64(len(frame)) > postWALLimit || s.durableBytes.Load()-s.appliedBytes.Load()+int64(len(frame)) > postPendingLimit) {
+	if err == nil && (s.writtenBytes+int64(len(frame)) > postWALLimit || s.writtenBytes-s.appliedBytes.Load()+int64(len(frame)) > postPendingLimit) {
 		err = postsUnavailable("WAL capacity reached")
 	}
 	if err == nil {
-		start := time.Now()
+		// Publish the frame boundary only after the complete write. Sync may overlap
+		// subsequent writes, but acknowledgements never exceed its captured boundary.
+		s.walMu.Lock()
 		err = writePostBytes(s.file, frame)
 		if err == nil {
-			err = s.syncFile()
+			s.writtenBytes += int64(len(frame))
+			s.writtenSeq = seq
+			s.pending = append(s.pending, postBatch{requests: batch, records: records, end: s.writtenBytes})
 		}
-		s.syncNanos.Add(uint64(time.Since(start)))
-		s.syncs.Add(1)
+		s.walMu.Unlock()
 		if err != nil {
-			s.fail(fmt.Errorf("WAL write or Sync: %w", err))
-		} else {
-			s.mu.Lock()
-			s.durableBytes.Add(int64(len(frame)))
-			s.durableSeq.Store(seq)
-			s.records.Add(uint64(len(records)))
-			s.mu.Unlock()
+			s.fail(fmt.Errorf("WAL write: %w", err))
 		}
 	}
-	for i, r := range batch {
-		r.done <- postResult{record: records[i], err: err}
+	if err != nil {
+		for i, r := range batch {
+			r.done <- postResult{record: records[i], err: err}
+		}
+		return
+	}
+	select {
+	case s.syncWake <- struct{}{}:
+	default:
+	}
+}
+
+func (s *postStore) syncPosts() {
+	for range s.syncWake {
+		s.walMu.Lock()
+		batches := s.pending
+		s.pending = nil
+		s.walMu.Unlock()
+		if len(batches) == 0 {
+			continue
+		}
+		err := s.check()
+		if err == nil {
+			start := time.Now()
+			err = s.syncFile()
+			s.syncNanos.Add(uint64(time.Since(start)))
+			s.syncs.Add(1)
+			if err != nil {
+				s.fail(fmt.Errorf("WAL Sync: %w", err))
+			}
+		}
+		if err == nil {
+			last := batches[len(batches)-1]
+			s.mu.Lock()
+			s.durableBytes.Store(last.end)
+			s.durableSeq.Store(last.records[len(last.records)-1].Seq)
+			for _, batch := range batches {
+				s.records.Add(uint64(len(batch.records)))
+			}
+			s.mu.Unlock()
+		}
+		for _, batch := range batches {
+			for i, r := range batch.requests {
+				r.done <- postResult{record: batch.records[i], err: err}
+			}
+		}
 	}
 }

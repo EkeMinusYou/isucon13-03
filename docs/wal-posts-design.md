@@ -315,6 +315,6 @@ WALの操作を2種類、追加テーブルを1個、追加常駐処理を2本�
 - 再起動前後とも同じWAL世代を維持し、`durable_seq=applied_seq=2`、`pending_bytes=0`、`failed=false`を確認した。
 - ホストの役割とDNS動作の確認が成功。
 
-今回のsmokeによる2件の投稿は性能評価用の負荷ではない。ベンチマーカーは実行しておらず、得点と投稿レイテンシの改善幅は未測定。
-SQL pool収集の既存JSONへ`post_wal`を追加したので、次のRUNではその生データから同期回数・時間、反映位置、容量を確認できる。
+今回のsmokeによる2件の投稿は性能評価用の負荷ではない。デプロイ作業ではベンチマーカーを実行していない。その後、ユーザーが実行したRUNの比較結果は[wal-posts-result.md](wal-posts-result.md)に記録した。
+SQL pool APIの既存JSONへ`post_wal`を追加したが、既存collectorは`pools`のみをTSVへ保存するため、RUN成果物へWAL指標を残す対応が漏れている。同期回数・時間、反映位置、容量の時系列を評価するには収集側の対応が必要。
 配布ログは`.task/wal-posts-deploy.log`、実MySQLテストログは`.task/wal-posts-mysql.log`に保存した。
