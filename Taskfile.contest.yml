@@ -9,6 +9,90 @@
 version: '3'
 
 tasks:
+  inspect-special-sauce:
+    desc: 秘伝のタレの反映前に計測停止・ホスト上限・現行実効値を読み取り確認する
+    preconditions:
+      - sh: test ! -f '{{.RUN_STATE_FILE}}'
+        msg: active benchmark exists
+    deps: [build-measurectl]
+    cmds:
+      - '{{.MEASURECTL_DIR}}/measurectl collect check-clean {{.MEASURECTL_REMOTE}}'
+      - for: { var: ALL_HOSTS }
+        cmd: |
+          {{.SSH}} {{.SSH_USER}}@{{.ITEM}} '
+            set -eu
+            echo "{{.ITEM}}"
+            uname -sm
+            free -m
+            sysctl fs.nr_open net.core.somaxconn net.ipv4.ip_local_port_range net.core.rmem_max net.core.wmem_max
+            test "$(sysctl -n fs.nr_open)" -ge 1006500
+            if sudo systemctl is-active --quiet {{.SERVICE}}; then
+              test "$(curl --fail --silent --max-time 5 http://127.0.0.1:6060/debug/profiles/status)" = "{\"cpu\":\"\",\"fgprof\":\"\"}"
+              curl --fail --silent --max-time 5 http://127.0.0.1:6060/debug/sql-pools
+            fi
+          '
+      - for: { var: MYSQL_HOSTS }
+        cmd: |
+          {{.SSH}} {{.SSH_USER}}@{{.ITEM}} '
+            set -eu
+            sudo mysql -e "SELECT VERSION(); SHOW VARIABLES WHERE Variable_name IN (\"innodb_buffer_pool_size\",\"innodb_flush_log_at_trx_commit\",\"innodb_flush_method\",\"log_bin\",\"max_connections\",\"open_files_limit\"); SELECT CHANNEL_NAME,SERVICE_STATE FROM performance_schema.replication_connection_status; SELECT CHANNEL_NAME,SERVICE_STATE FROM performance_schema.replication_applier_status;"
+            sudo systemctl show mysql -p LimitNOFILE -p MemoryMax
+            findmnt -T /var/lib/mysql -o TARGET,FSTYPE,OPTIONS
+          '
+      - for: { var: NGINX_HOSTS }
+        cmd: |
+          {{.SSH}} {{.SSH_USER}}@{{.ITEM}} '
+            set -eu
+            sudo systemctl show nginx -p LimitNOFILE -p LimitNOFILESoft
+            sudo nginx -T 2>&1 | grep -E "worker_processes|worker_rlimit_nofile|worker_connections|multi_accept|tcp_nodelay|server_tokens|keepalive|proxy_http_version|proxy_set_header Connection"
+          '
+
+  check-special-sauce:
+    desc: 秘伝のタレの反映後にsysctl・MySQL・nginxの実効値を確認する
+    cmds:
+      - for: { var: ALL_HOSTS }
+        cmd: |
+          {{.SSH}} {{.SSH_USER}}@{{.ITEM}} '
+            set -eu
+            test "$(sysctl -n net.core.somaxconn)" = 65535
+            test "$(sysctl -n net.ipv4.ip_local_port_range | tr "\t" " ")" = "10000 60999"
+            test "$(sysctl -n net.core.rmem_max)" = 16777216
+            test "$(sysctl -n net.core.wmem_max)" = 16777216
+            echo "{{.ITEM}}: kernel settings match"
+          '
+      - for: { var: MYSQL_HOSTS }
+        cmd: |
+          {{.SSH}} {{.SSH_USER}}@{{.ITEM}} '
+            set -eu
+            sudo systemctl is-active --quiet mysql
+            test "$(sudo systemctl show mysql -p LimitNOFILE --value)" = 1006500
+            pid=$(sudo systemctl show mysql -p MainPID --value)
+            sudo awk "/Max open files/ {print; if (\$4 != 1006500 || \$5 != 1006500) exit 1}" "/proc/$pid/limits"
+            actual=$(sudo mysql -N -e "SELECT @@innodb_buffer_pool_size,@@innodb_flush_log_at_trx_commit,@@innodb_flush_method,@@log_bin,@@max_connections")
+            test "$actual" = "$(printf "1073741824\t2\tO_DIRECT\t0\t10000")"
+            printf "buffer_pool_bytes\tflush_log_at_trx_commit\tflush_method\tlog_bin\tmax_connections\n%s\n" "$actual"
+            sudo grep -E "VmRSS|FDSize" "/proc/$pid/status"
+            sudo mysql -e "SHOW GLOBAL STATUS WHERE Variable_name IN (\"Threads_connected\",\"Max_used_connections\",\"Connection_errors_max_connections\",\"Aborted_connects\");"
+            echo "{{.ITEM}}: MySQL settings and process limits match"
+          '
+      - for: { var: NGINX_HOSTS }
+        cmd: |
+          {{.SSH}} {{.SSH_USER}}@{{.ITEM}} '
+            set -eu
+            sudo systemctl is-active --quiet nginx
+            sudo nginx -t
+            sudo nginx -T 2>&1 | grep -E "worker_processes|worker_rlimit_nofile|worker_connections|multi_accept|sendfile|tcp_nopush|tcp_nodelay|types_hash_max_size|server_tokens|keepalive|proxy_http_version|proxy_set_header Connection"
+            pid=$(sudo systemctl show nginx -p MainPID --value)
+            workers=$(pgrep -P "$pid" -f "nginx: worker process")
+            test -n "$workers"
+            for worker in $workers; do
+              sudo awk "/Max open files/ {print; if (\$4 != 16384 || \$5 != 16384) exit 1}" "/proc/$worker/limits"
+              sudo grep -E "VmRSS|FDSize" "/proc/$worker/status"
+            done
+          '
+      - task: check-roles
+      - task: check-network
+
   setup-icon-edge-sources:
     desc: nginxとnjsの固定version sourceをローカルへ取得する
     status:
@@ -262,14 +346,14 @@ tasks:
       - diff .task/bulk-writes-persisted-before.tsv .task/bulk-writes-persisted-after.tsv
 
   check-bulk-writes-mysql:
-    desc: binlog無効化とInnoDB同期保存、採番条件を読み取り確認する
+    desc: binlog無効化とInnoDBのログ書込み設定、採番条件を読み取り確認する
     cmds:
       - |
         {{.SSH}} {{.SSH_USER}}@{{.MYSQL_HOST}} '
           set -eu
           actual=$(sudo mysql -N -e "SELECT @@log_bin,@@innodb_flush_log_at_trx_commit,@@auto_increment_increment,@@auto_increment_offset")
-          test "$actual" = "$(printf "0\t1\t1\t1")"
-          echo "MySQL: binlog OFF, durable InnoDB commit, increment/offset 1"
+          test "$actual" = "$(printf "0\t2\t1\t1")"
+          echo "MySQL: binlog OFF, InnoDB flush_log_at_trx_commit 2, increment/offset 1"
         '
 
   deploy-nginx-split-dry:
