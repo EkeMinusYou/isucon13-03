@@ -121,11 +121,15 @@ func newDNSState(base *dnsBase) dnsState {
 	}
 	return s
 }
-func newDNSControl(base []byte, path string, address net.IP) (*dnsControl, error) {
+func newDNSControl(base []byte, path string, address, commonAddress net.IP) (*dnsControl, error) {
 	initial, err := parseDNSBase(base, address)
 	if err != nil {
 		return nil, err
 	}
+	if commonAddress.To4() == nil {
+		return nil, fmt.Errorf("invalid common ingress IPv4 address")
+	}
+	copy(initial.commonAddress[:], commonAddress.To4())
 	d := &dnsControl{base: initial, path: path, ops: defaultDNSFileOps(), queue: make(chan dnsUpdate, 128)}
 	d.state = newDNSState(initial)
 	if err := d.recover(); err != nil {
@@ -375,7 +379,8 @@ func runDNSControl() error {
 	if address.To4() == nil {
 		return fmt.Errorf("invalid IPv4 DNS address")
 	}
-	d, err := newDNSControl(base, filepath.Join("/var/lib/isupipe/dns", "registrations.wal"), address)
+	commonAddress := net.ParseIP(os.Getenv("ISUPIPE_DNS_COMMON_ADDRESS"))
+	d, err := newDNSControl(base, filepath.Join("/var/lib/isupipe/dns", "registrations.wal"), address, commonAddress)
 	if err != nil {
 		return err
 	}

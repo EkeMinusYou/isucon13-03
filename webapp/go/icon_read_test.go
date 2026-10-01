@@ -13,6 +13,87 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+func TestIconReplicaNotificationFanout(t *testing.T) {
+	arrived := make(chan struct{}, 2)
+	release := make(chan struct{})
+	var once sync.Once
+	t.Cleanup(func() { once.Do(func() { close(release) }) })
+	updates := make(chan iconUpdate, 2)
+	invalidations := make(chan struct{}, 2)
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/_internal/update":
+			var update iconUpdate
+			if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
+				http.Error(w, "invalid update", 400)
+				return
+			}
+			updates <- update
+			arrived <- struct{}{}
+			<-release
+		case "/_internal/invalidate":
+			invalidations <- struct{}{}
+		default:
+			http.NotFound(w, r)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	first, second := httptest.NewServer(handler), httptest.NewServer(handler)
+	defer func() {
+		once.Do(func() { close(release) })
+		first.Close()
+		second.Close()
+	}()
+	t.Setenv("ISUPIPE_ICON_READ_URLS", first.URL+" "+second.URL)
+	update := iconUpdate{Epoch: "shared", Revision: 3, Name: "alpha", Hash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+	done := make(chan struct{})
+	go func() { notifyIconReplica(update); close(done) }()
+	for i := 0; i < 2; i++ {
+		select {
+		case <-arrived:
+		case <-time.After(time.Second):
+			t.Fatal("replica notifications did not start concurrently")
+		}
+	}
+	select {
+	case <-done:
+		t.Fatal("notification acknowledged before both replicas completed")
+	default:
+	}
+	once.Do(func() { close(release) })
+	<-done
+	for i := 0; i < 2; i++ {
+		if got := <-updates; got != update {
+			t.Fatal("replicas received different updates", got)
+		}
+	}
+	invalidateIconReplica()
+	if len(invalidations) != 2 {
+		t.Fatal("initialization did not invalidate both replicas")
+	}
+}
+
+func TestIconReplicaClientAllowlist(t *testing.T) {
+	for _, tc := range []struct {
+		remote string
+		allow  bool
+	}{
+		{"127.0.0.1:1234", true},
+		{"[::1]:1234", true},
+		{"192.0.2.1:1234", true},
+		{"192.0.2.2:1234", true},
+		{"192.0.2.3:1234", false},
+		{"192.0.2.1", false},
+	} {
+		r := httptest.NewRequest(http.MethodGet, "/_internal/icon-state", nil)
+		r.RemoteAddr = tc.remote
+		if got := privateIconClient(r, "192.0.2.1 192.0.2.2"); got != tc.allow {
+			t.Fatalf("%s: allowed=%v, want %v", tc.remote, got, tc.allow)
+		}
+	}
+}
+
 func TestIconReplicaUpdatesExpiryAndRestart(t *testing.T) {
 	s := &iconStore{dir: t.TempDir(), byName: make(map[string]*iconEntry), byID: make(map[int64]*iconEntry), epoch: "initial"}
 	first, err := s.persist([]byte("first"))

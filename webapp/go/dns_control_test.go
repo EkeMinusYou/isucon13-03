@@ -23,9 +23,59 @@ import (
 
 const dnsTestBase = "$TTL 3600\n@ SOA ns1 hostmaster.u.isucon.dev. ( 0 10800 3600 604800 3600 )\n@ 0 IN NS ns1.u.isucon.dev.\n@ 0 IN A <ISUCON_SUBDOMAIN_ADDRESS>\nns1 0 IN A <ISUCON_SUBDOMAIN_ADDRESS>\npipe 0 IN A <ISUCON_SUBDOMAIN_ADDRESS>\n"
 
+func TestDNSSplitIngressAndRecovery(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "registrations.wal")
+	streamIP, commonIP := net.ParseIP("192.0.2.1"), net.ParseIP("192.0.2.2")
+	d, err := newDNSControl([]byte(dnsTestBase), path, streamIP, commonIP)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { d.close() })
+	initial := dnsCall(t, d, dnsUpdate{Reset: true})
+	registered := dnsCall(t, d, dnsUpdate{Name: "child.parent", Epoch: initial.Epoch})
+	assertRoutes := func() {
+		t.Helper()
+		for _, tc := range []struct {
+			name string
+			ip   [4]byte
+		}{
+			{"PIPE." + dnsSuffix, [4]byte{192, 0, 2, 2}},
+			{"child.parent." + dnsSuffix, [4]byte{192, 0, 2, 1}},
+			{"ns1." + dnsSuffix, [4]byte{192, 0, 2, 1}},
+		} {
+			answer := dnsQuestion(t, d, tc.name, dnsmessage.TypeA)
+			if answer.RCode != 0 || len(answer.Answers) != 1 || answer.Answers[0].Header.TTL != 300 || answer.Answers[0].Body.(*dnsmessage.AResource).A != tc.ip {
+				t.Fatalf("%s: wrong ingress: %+v", tc.name, answer)
+			}
+		}
+		if r := dnsQuestion(t, d, "missing."+dnsSuffix, dnsmessage.TypeA); r.RCode != dnsmessage.RCodeNameError {
+			t.Fatal("unknown name acquired an ingress")
+		}
+		if r := dnsQuestion(t, d, "parent."+dnsSuffix, dnsmessage.TypeA); r.RCode != 0 || len(r.Answers) != 0 {
+			t.Fatal("empty nonterminal acquired an ingress")
+		}
+		if r := dnsQuestion(t, d, "pipe."+dnsSuffix, dnsmessage.TypeAAAA); len(r.Answers) != 0 || len(r.Authorities) != 1 {
+			t.Fatal("AAAA no-data changed")
+		}
+		if r := dnsQuestion(t, d, dnsSuffix, dnsmessage.TypeNS); len(r.Additionals) != 1 || r.Additionals[0].Body.(*dnsmessage.AResource).A != [4]byte{192, 0, 2, 1} {
+			t.Fatal("NS glue moved to the common HTTP ingress")
+		}
+	}
+	assertRoutes()
+	d.close()
+	d, err = newDNSControl([]byte(dnsTestBase), path, streamIP, commonIP)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := d.reply(); r.Epoch != registered.Epoch || r.Serial != registered.Serial {
+		t.Fatal("ingress split changed recovered registration state")
+	}
+	assertRoutes()
+}
+
 func testDNS(t *testing.T) *dnsControl {
 	t.Helper()
-	d, err := newDNSControl([]byte(dnsTestBase), filepath.Join(t.TempDir(), "registrations.wal"), net.ParseIP("192.0.2.1"))
+	d, err := newDNSControl([]byte(dnsTestBase), filepath.Join(t.TempDir(), "registrations.wal"), net.ParseIP("192.0.2.1"), net.ParseIP("192.0.2.1"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +159,7 @@ func TestDNSPublishAfterSyncAndRecovery(t *testing.T) {
 		t.Fatal("duplicate appended")
 	}
 	d.close()
-	restored, err := newDNSControl([]byte(dnsTestBase), d.path, net.ParseIP("192.0.2.2"))
+	restored, err := newDNSControl([]byte(dnsTestBase), d.path, net.ParseIP("192.0.2.2"), net.ParseIP("192.0.2.2"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +235,7 @@ func TestDNSJournalTornTailAndCorruption(t *testing.T) {
 	for _, size := range []int{1, 100, dnsRecordSize - 1} {
 		path := filepath.Join(t.TempDir(), "journal")
 		os.WriteFile(path, append(bytes.Clone(original), tail[:size]...), 0640)
-		r, err := newDNSControl([]byte(dnsTestBase), path, net.ParseIP("192.0.2.1"))
+		r, err := newDNSControl([]byte(dnsTestBase), path, net.ParseIP("192.0.2.1"), net.ParseIP("192.0.2.1"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -200,7 +250,7 @@ func TestDNSJournalTornTailAndCorruption(t *testing.T) {
 		corrupted := bytes.Clone(original)
 		corrupted[offset] ^= 1
 		os.WriteFile(path, corrupted, 0640)
-		if r, err := newDNSControl([]byte(dnsTestBase), path, net.ParseIP("192.0.2.1")); err == nil {
+		if r, err := newDNSControl([]byte(dnsTestBase), path, net.ParseIP("192.0.2.1"), net.ParseIP("192.0.2.1")); err == nil {
 			r.close()
 			t.Fatal("corruption silently accepted", offset)
 		}
@@ -343,7 +393,7 @@ func TestDNSCrashRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	cmd.Wait()
-	d, err := newDNSControl([]byte(dnsTestBase), path, net.ParseIP("192.0.2.1"))
+	d, err := newDNSControl([]byte(dnsTestBase), path, net.ParseIP("192.0.2.1"), net.ParseIP("192.0.2.1"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -357,7 +407,7 @@ func TestDNSCrashHelper(t *testing.T) {
 	if path == "" {
 		return
 	}
-	d, err := newDNSControl([]byte(dnsTestBase), path, net.ParseIP("192.0.2.1"))
+	d, err := newDNSControl([]byte(dnsTestBase), path, net.ParseIP("192.0.2.1"), net.ParseIP("192.0.2.1"))
 	if err != nil {
 		t.Fatal(err)
 	}

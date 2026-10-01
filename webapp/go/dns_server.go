@@ -14,10 +14,11 @@ import (
 )
 
 type dnsBase struct {
-	names   map[string]bool
-	address [4]byte
-	ns      dnsmessage.NSResource
-	soa     dnsmessage.SOAResource
+	names         map[string]bool
+	address       [4]byte
+	commonAddress [4]byte
+	ns            dnsmessage.NSResource
+	soa           dnsmessage.SOAResource
 }
 
 func validDNSFQDN(name string) bool {
@@ -241,7 +242,11 @@ func (d *dnsControl) dnsResponse(packet, scratch []byte) []byte {
 	soa.Serial = d.state.serial()
 	d.mu.RUnlock()
 	aRecord := func(owner dnsmessage.Name) dnsmessage.Resource {
-		return dnsmessage.Resource{Header: dnsmessage.ResourceHeader{Name: owner, Type: dnsmessage.TypeA, Class: dnsmessage.ClassINET, TTL: 300}, Body: &dnsmessage.AResource{A: d.base.address}}
+		address := d.base.address
+		if dnsCanonical(owner.String()) == "pipe."+dnsSuffix {
+			address = d.base.commonAddress
+		}
+		return dnsmessage.Resource{Header: dnsmessage.ResourceHeader{Name: owner, Type: dnsmessage.TypeA, Class: dnsmessage.ClassINET, TTL: 300}, Body: &dnsmessage.AResource{A: address}}
 	}
 	soaRecord := func(ttl uint32) dnsmessage.Resource {
 		return dnsmessage.Resource{Header: dnsmessage.ResourceHeader{Name: dnsmessage.MustNewName(dnsSuffix), Type: dnsmessage.TypeSOA, Class: dnsmessage.ClassINET, TTL: ttl}, Body: &soa}

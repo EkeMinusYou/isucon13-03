@@ -192,8 +192,9 @@ tasks:
       - for: { var: APP_HOSTS }
         cmd: '{{.SSH}} {{.SSH_USER}}@{{.ITEM}} "sudo -u {{.ISUCON_USER}} bash -s" < tools/contest/session-key-fingerprint.sh > .task/session-key-app.sha'
       - for: { var: ICON_READ_HOSTS }
-        cmd: '{{.SSH}} {{.SSH_USER}}@{{.ITEM}} "sudo -u {{.ISUCON_USER}} bash -s" < tools/contest/session-key-fingerprint.sh > .task/session-key-reader.sha'
-      - cmp .task/session-key-app.sha .task/session-key-reader.sha
+        cmd: |
+          {{.SSH}} {{.SSH_USER}}@{{.ITEM}} "sudo -u {{.ISUCON_USER}} bash -s" < tools/contest/session-key-fingerprint.sh > .task/session-key-reader.sha
+          cmp .task/session-key-app.sha .task/session-key-reader.sha
 
   deploy-fast-paths-dry:
     desc: WAL・署名Cookie・アイコン読取りの配布先と起動順を表示する
@@ -253,7 +254,7 @@ tasks:
             actual=$(sudo sha256sum "/proc/$pid/exe" | cut -d " " -f 1)
             test "$actual" = "{{.BINARY_SHA256}}"
             sudo systemctl is-enabled --quiet isupipe-icons
-            curl --fail --silent http://{{.ICON_READ_IP}}:{{.ICON_READ_PORT}}/_internal/status
+            curl --fail --silent http://{{index .IP .ITEM}}:{{.ICON_READ_PORT}}/_internal/status
           ' | python3 -c 'import json, sys; state = json.load(sys.stdin); print(json.dumps(state)); assert state["fresh"] and state["users"] > 0 and state["epoch"], state'
 
   deploy-wal-primary:
@@ -363,6 +364,39 @@ tasks:
       - task: gen
       - task: build
       - '{{.DEPLOYCTL_DIR}}/deployctl apply-plan nginx-split -dry-run -config {{.DEPLOYCTL_CONFIG}} {{.DEPLOYCTL_COMMON}}'
+
+  deploy-dual-ingress-dry:
+    desc: 2台入口の配布先とDNS切替までのサービス操作を表示する
+    deps: [gen, build-deployctl]
+    cmds:
+      - '{{.DEPLOYCTL_DIR}}/deployctl apply icon-edge-module -dry-run -config {{.DEPLOYCTL_CONFIG}} {{.DEPLOYCTL_COMMON}}'
+      - '{{.DEPLOYCTL_DIR}}/deployctl apply-plan dual-ingress -dry-run -config {{.DEPLOYCTL_CONFIG}} {{.DEPLOYCTL_COMMON}}'
+
+  deploy-dual-ingress:
+    desc: 1・2号機のHTTPS入口とreader、3号機の通知先、1号機のDNSを反映する
+    preconditions:
+      - sh: test ! -f '{{.RUN_STATE_FILE}}'
+        msg: active benchmark exists
+    cmds:
+      - task: inspect-nginx-split-prereqs
+      - task: inspect-fast-paths
+      - task: build-icon-edge-module
+      - task: gen
+      - task: build
+      - '{{.DEPLOYCTL_DIR}}/deployctl apply icon-edge-module -config {{.DEPLOYCTL_CONFIG}} {{.DEPLOYCTL_COMMON}}'
+      - task: deploy-plan
+        vars: { PLAN: dual-ingress }
+      - task: check-role-split
+      - task: check-icon-read
+      - task: check-icon-edge
+      - task: check-app-deployment
+        vars: { ICON_SMOKE_PHASE: write, ICON_EDGE_CHECK: 'true', CROSS_INGRESS_CHECK: 'true' }
+
+  check-dual-ingress-local:
+    desc: DNS分岐・通知fanout・ACLをrace検証し、Linux/amd64の疎通ツールをbuildする
+    deps: [build-smoke]
+    cmds:
+      - task: check-fast-paths
 
   inspect-nginx-split-prereqs:
     desc: 計測停止・OS/Arch・移設先の証明書を読み取り確認する
@@ -702,7 +736,14 @@ tasks:
           '
       - '{{.SSH}} {{.SSH_USER}}@{{.ENTRY_HOST}} ''mkdir -p {{.SMOKE_REMOTE_DIR}}'''
       - '{{.RSYNC}} {{.SMOKE_TOOL_DIR}}/smoke {{.SSH_USER}}@{{.ENTRY_HOST}}:{{.SMOKE_REMOTE_DIR}}/smoke'
-      - '{{.SSH}} {{.SSH_USER}}@{{.ENTRY_HOST}} ''{{.SMOKE_REMOTE_DIR}}/smoke {{.SMOKE_ARGS}} -icons-phase "{{.ICON_SMOKE_PHASE | default ""}}" -icon-edge={{.ICON_EDGE_CHECK | default "false"}} -registration-phase "{{.REGISTRATION_SMOKE_PHASE | default ""}}" -references-phase "{{.REFERENCES_SMOKE_PHASE | default ""}}" -mutations-phase "{{.MUTATIONS_SMOKE_PHASE | default ""}}" -dns-server {{.DNS_IP}}:53 -dns-address {{.DNS_RECORD_ADDRESS}}'''
+      - '{{.SSH}} {{.SSH_USER}}@{{.ENTRY_HOST}} ''{{.SMOKE_REMOTE_DIR}}/smoke {{.SMOKE_ARGS}} -icons-phase "{{.ICON_SMOKE_PHASE | default ""}}" -cross-ingress={{.CROSS_INGRESS_CHECK | default "false"}} -registration-phase "{{.REGISTRATION_SMOKE_PHASE | default ""}}" -references-phase "{{.REFERENCES_SMOKE_PHASE | default ""}}" -mutations-phase "{{.MUTATIONS_SMOKE_PHASE | default ""}}" -dns-server {{.DNS_IP}}:53 -dns-address {{.DNS_RECORD_ADDRESS}} -dns-common-address {{.DNS_COMMON_ADDRESS}}'''
+      - for: { var: NGINX_HOSTS }
+        cmd: |
+          {{if eq (.ICON_EDGE_CHECK | default "false") "true"}}
+          {{.SSH}} {{.SSH_USER}}@{{.ITEM}} 'mkdir -p {{.SMOKE_REMOTE_DIR}}'
+          {{.RSYNC}} {{.SMOKE_TOOL_DIR}}/smoke {{.SSH_USER}}@{{.ITEM}}:{{.SMOKE_REMOTE_DIR}}/smoke
+          {{.SSH}} {{.SSH_USER}}@{{.ITEM}} '{{.SMOKE_REMOTE_DIR}}/smoke -ingress 127.0.0.1:443 -icon-edge=true'
+          {{end}}
 
   setup-contest-assets:
     desc: 競技固有の依存サービス資材を取得
@@ -723,14 +764,20 @@ tasks:
         ISUCON13_MYSQL_DIALCONFIG_PORT=3306
         ISUCON13_POWERDNS_SUBDOMAIN_ADDRESS={{.DNS_RECORD_ADDRESS}}
         ISUPIPE_DNS_URL=http://{{.DNS_IP}}:{{.DNS_CONTROL_PORT}}
-        ISUPIPE_ICON_READ_IP={{.ICON_READ_IP}}
-        ISUPIPE_ICON_READ_LISTEN={{.ICON_READ_IP}}:{{.ICON_READ_PORT}}
-        ISUPIPE_ICON_READ_URL=http://{{.ICON_READ_IP}}:{{.ICON_READ_PORT}}
+        ISUPIPE_ICON_READ_IPS="{{.ICON_READ_IPS}}"
+        ISUPIPE_ICON_READ_URLS="{{.ICON_READ_URLS}}"
         ISUPIPE_ICON_READ_SOCKET={{.ICON_READ_SOCKET}}
         ISUPIPE_ICON_EDGE_URL={{.ICON_EDGE_URL}}
         ISUPIPE_ICON_ORIGIN_IP={{.APP_ORIGIN_IP}}
         ISUPIPE_ICON_ORIGIN_URL=http://{{.APP_ORIGIN_IP}}:{{.LISTEN_PORT}}
         ENV
+      - for: { var: ICON_READ_HOSTS }
+        cmd: |
+          mkdir -p etc/hosts/{{.ITEM}}
+          cat > etc/hosts/{{.ITEM}}/icon-read.env <<'ENV'
+          # GENERATED by task gen; each reader binds its own private address.
+          ISUPIPE_ICON_READ_LISTEN={{index .IP .ITEM}}:{{.ICON_READ_PORT}}
+          ENV
       - |
         cat > nginx/conf.d/icon-read.conf <<'CONF'
         # GENERATED by task gen-contest-routing.
@@ -752,6 +799,7 @@ tasks:
         ISUPIPE_DNS_LISTEN={{.DNS_IP}}:{{.DNS_CONTROL_PORT}}
         ISUPIPE_DNS_CLIENTS={{.APP_IPS}}
         ISUCON13_POWERDNS_SUBDOMAIN_ADDRESS={{.DNS_RECORD_ADDRESS}}
+        ISUPIPE_DNS_COMMON_ADDRESS={{.DNS_COMMON_ADDRESS}}
         ENV
       - for: { var: DNS_HOSTS }
         cmd: |
@@ -841,7 +889,8 @@ tasks:
                 test "$actual" = "{{.BINARY_SHA256}}"
                 curl --fail --silent http://{{.DNS_IP}}:{{.DNS_CONTROL_PORT}}/status | python3 -c "import json,sys; s=json.load(sys.stdin); assert s[\"ready\"] and not s[\"failed\"]; print(s)"
                 answer=$(dig +time=2 +tries=1 +short pipe.u.isucon.dev @127.0.0.1)
-                test "$answer" = "{{.DNS_RECORD_ADDRESS}}"
+                test "$answer" = "{{.DNS_COMMON_ADDRESS}}"
+                test "$(dig +time=2 +tries=1 +short ns1.u.isucon.dev @127.0.0.1)" = "{{index .PUBLIC_IP (splitList " " .DNS_HOSTS | first)}}"
                 dig +time=2 +tries=1 +noall +answer pipe.u.isucon.dev @127.0.0.1 | awk "\$2 == 300 && \$4 == \"A\" {found=1} END {exit !found}"
                 dig +time=2 +tries=1 unknown-go-dns-check.u.isucon.dev @127.0.0.1 | grep -q "status: NXDOMAIN"
                 dig +time=2 +tries=1 pipe.u.isucon.dev AAAA @127.0.0.1 | grep -q "ANSWER: 0, AUTHORITY: 1"

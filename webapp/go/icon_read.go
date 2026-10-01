@@ -53,11 +53,22 @@ func (s *iconStore) changedIcon(name, hash string) {
 
 func privateIconClient(r *http.Request, allowed string) bool {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	return err == nil && (host == "127.0.0.1" || host == "::1" || allowed != "" && host == allowed)
+	if err != nil {
+		return false
+	}
+	if host == "127.0.0.1" || host == "::1" {
+		return true
+	}
+	for _, ip := range strings.Fields(allowed) {
+		if host == ip {
+			return true
+		}
+	}
+	return false
 }
 
 func iconSnapshotHandler(c echo.Context) error {
-	if !privateIconClient(c.Request(), os.Getenv("ISUPIPE_ICON_READ_IP")) {
+	if !privateIconClient(c.Request(), os.Getenv("ISUPIPE_ICON_READ_IPS")) {
 		return echo.NewHTTPError(http.StatusForbidden)
 	}
 	s := currentIcons
@@ -200,7 +211,7 @@ func (s *iconReplica) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	if r.URL.Path == "/_internal/status" && (privateIconClient(r, os.Getenv("ISUPIPE_ICON_ORIGIN_IP")) || privateIconClient(r, os.Getenv("ISUPIPE_ICON_READ_IP"))) {
+	if r.URL.Path == "/_internal/status" && (privateIconClient(r, os.Getenv("ISUPIPE_ICON_ORIGIN_IP")) || privateIconClient(r, os.Getenv("ISUPIPE_ICON_READ_IPS"))) {
 		s.mu.RLock()
 		defer s.mu.RUnlock()
 		_ = json.NewEncoder(w).Encode(map[string]any{"epoch": s.epoch, "revision": s.revision, "users": len(s.byName), "fresh": time.Now().Before(s.validUntil)})
@@ -274,30 +285,31 @@ func runIconRead() error {
 }
 
 func invalidateIconReplica() {
-	endpoint := os.Getenv("ISUPIPE_ICON_READ_URL")
-	if endpoint == "" {
-		return
-	}
-	client := &http.Client{Timeout: time.Second}
-	resp, err := client.Post(endpoint+"/_internal/invalidate", "application/json", nil)
-	if err == nil {
-		resp.Body.Close()
-	}
+	postIconReplicas("/_internal/invalidate", nil, &http.Client{Timeout: time.Second})
 }
 
 var iconNotifyClient = &http.Client{Timeout: 500 * time.Millisecond}
 
 func notifyIconReplica(update iconUpdate) {
-	endpoint := os.Getenv("ISUPIPE_ICON_READ_URL")
-	if endpoint == "" {
-		return
-	}
 	data, err := json.Marshal(update)
 	if err != nil {
 		return
 	}
-	resp, err := iconNotifyClient.Post(endpoint+"/_internal/update", "application/json", bytes.NewReader(data))
-	if err == nil {
-		resp.Body.Close()
+	postIconReplicas("/_internal/update", data, iconNotifyClient)
+}
+
+func postIconReplicas(path string, data []byte, client *http.Client) {
+	var pending sync.WaitGroup
+	for _, endpoint := range strings.Fields(os.Getenv("ISUPIPE_ICON_READ_URLS")) {
+		pending.Add(1)
+		go func(endpoint string) {
+			defer pending.Done()
+			resp, err := client.Post(strings.TrimRight(endpoint, "/")+path, "application/json", bytes.NewReader(data))
+			if err == nil {
+				resp.Body.Close()
+			}
+		}(endpoint)
 	}
+	// Preserve publication order without adding the replicas' timeout budgets.
+	pending.Wait()
 }

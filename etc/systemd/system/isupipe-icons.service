@@ -8,6 +8,7 @@ User=isucon
 Group=isucon
 EnvironmentFile=/home/isucon/env.sh
 EnvironmentFile=/home/isucon/topology.env
+EnvironmentFile=/home/isucon/icon-read.env
 Environment=ISUPIPE_MODE=icon-read
 RuntimeDirectory=isupipe-icons
 RuntimeDirectoryMode=0755

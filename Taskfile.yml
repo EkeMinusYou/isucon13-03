@@ -69,19 +69,22 @@ vars:
       isucon-1: 54.250.213.246
       isucon-2: 18.177.140.41
       isucon-3: 13.231.248.152
-  ICON_READ_HOSTS: isucon-1
+  ICON_READ_HOSTS: isucon-1 isucon-2
   ICON_READ_PORT: '8054'
-  ICON_READ_IP: '{{index .IP (splitList " " .ICON_READ_HOSTS | first)}}'
+  ICON_READ_IPS: '{{$ips := list}}{{range (splitList " " .ICON_READ_HOSTS)}}{{$ips = append $ips (index $.IP .)}}{{end}}{{join " " $ips}}'
+  ICON_READ_URLS: '{{$urls := list}}{{range (splitList " " .ICON_READ_HOSTS)}}{{$urls = append $urls (printf "http://%s:%s" (index $.IP .) $.ICON_READ_PORT)}}{{end}}{{join " " $urls}}'
   ICON_READ_SOCKET: /run/isupipe-icons/http.sock
   ICON_EDGE_URL: http://127.0.0.1:8055
   APP_HOSTS: isucon-3
   APP_TRAFFIC_HOSTS: isucon-3
   APP_ORIGIN_IP: '{{index .IP (splitList " " .APP_HOSTS | first)}}'
-  NGINX_HOSTS: isucon-1
+  NGINX_HOSTS: isucon-1 isucon-2
   DNS_HOSTS: isucon-1
   DNS_CONTROL_PORT: '8053'
   DNS_IP: '{{index .IP (splitList " " .DNS_HOSTS | first)}}'
   DNS_RECORD_ADDRESS: '{{index .PUBLIC_IP (splitList " " .NGINX_HOSTS | first)}}'
+  DNS_COMMON_HOST: isucon-2
+  DNS_COMMON_ADDRESS: '{{index .PUBLIC_IP .DNS_COMMON_HOST}}'
   # MYSQL_HOST is the detailed measurement source and default DB connection.
   MYSQL_HOST: isucon-2
   # Deployment and service enable/disable targets; preserve the single-host default.

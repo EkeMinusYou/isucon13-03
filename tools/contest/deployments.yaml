@@ -30,6 +30,7 @@ deployments:
       - {label: icon reader binary, role: icon_read, local: '{var:app_dir}/isupipe', remote: /usr/local/bin/isupipe-icon-read}
       - {label: icon reader unit, role: icon_read, local: etc/systemd/system/isupipe-icons.service, remote: /etc/systemd/system/isupipe-icons.service}
       - {label: icon reader topology, role: icon_read, local: tools/contest/generated/topology.env, remote: /home/isucon/topology.env}
+      - {label: icon reader listen address, role: icon_read, local: 'etc/hosts/{host}/icon-read.env', remote: /home/isucon/icon-read.env}
     activations:
       - label: enable and restart icon reader
         role: icon_read
@@ -44,9 +45,9 @@ deployments:
   nginx:
     uploads:
       - {label: nginx njs module, role: nginx, local: .task/icon-edge/build/ngx_http_js_module.so, remote: /etc/nginx/ngx_http_js_module.so}
-      - {label: nginx configuration, role: nginx, local: nginx/, remote: /etc/nginx/, excludes: [tls/, ngx_http_js_module.so], delete: true, validate: sudo nginx -t}
-      - {label: public assets, role: nginx, local: webapp/public/, remote: /home/isucon/webapp/public/, delete: true}
-    activations:
+      - &ingress_nginx_config {label: nginx configuration, role: nginx, local: nginx/, remote: /etc/nginx/, excludes: [tls/, ngx_http_js_module.so], delete: true, validate: sudo nginx -t}
+      - &ingress_public_assets {label: public assets, role: nginx, local: webapp/public/, remote: /home/isucon/webapp/public/, delete: true}
+    activations: &ingress_nginx_activation
       - label: reload or start nginx
         role: nginx
         script: |
@@ -59,6 +60,11 @@ deployments:
           sudo systemctl is-active --quiet nginx
           curl --fail --silent --show-error --max-time 10 --cacert /etc/nginx/tls/_.u.isucon.dev.crt --resolve pipe.u.isucon.dev:443:127.0.0.1 https://pipe.u.isucon.dev/api/tag >/dev/null
           curl --fail --silent --show-error --max-time 10 --cacert /etc/nginx/tls/_.u.isucon.dev.crt --resolve pipe.u.isucon.dev:443:127.0.0.1 https://pipe.u.isucon.dev/ >/dev/null
+
+  ingress-nginx:
+    # Install the module separately before validated directory replacement.
+    uploads: [*ingress_nginx_config, *ingress_public_assets]
+    activations: *ingress_nginx_activation
 
   nginx-retire:
     activations:
@@ -103,6 +109,7 @@ deployments:
           sudo systemctl daemon-reload
           sudo systemctl restart {var:service}
           sudo systemctl is-active --quiet {var:service}
+          curl --fail --silent --show-error --retry 20 --retry-connrefused --retry-delay 1 --max-time 2 'http://127.0.0.1:{var:listen_port}/api/tag' >/dev/null
 
   app-after-schema:
     uploads: [*app_code, *app_unit, *app_sql, *app_zone]
@@ -215,6 +222,13 @@ deployments:
           esac
 
 plans:
+  dual-ingress:
+    deployments:
+      app: {}
+      icon-read: {needs: [app]}
+      ingress-nginx: {needs: [icon-read]}
+      ingress-dns: {needs: [ingress-nginx]}
+      icon-reader-roles: {needs: [ingress-dns]}
   icon-edge:
     deployments:
       icon-edge-module: {}

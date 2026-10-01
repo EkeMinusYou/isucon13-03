@@ -25,11 +25,13 @@ func main() {
 	targets := flag.String("ingress", "127.0.0.1:443", "comma separated ingress addresses")
 	iconsPhase := flag.String("icons-phase", "", "write or read to check durable icon updates")
 	iconEdge := flag.Bool("icon-edge", false, "verify nginx direct 304 and its access log identity")
+	crossIngress := flag.Bool("cross-ingress", false, "verify DNS routing, shared sessions and icon updates across ingress hosts")
 	registrationPhase := flag.String("registration-phase", "", "write or read to check durable user and DNS registration")
 	referencesPhase := flag.String("references-phase", "", "write or read to check reference publication and reload")
 	mutationsPhase := flag.String("mutations-phase", "", "write or read to check durable WAL events and statistics")
 	dnsServer := flag.String("dns-server", "", "authoritative DNS server address")
 	dnsAddress := flag.String("dns-address", "", "expected public HTTP ingress address")
+	dnsCommonAddress := flag.String("dns-common-address", "", "expected common-domain ingress address")
 	flag.Parse()
 	if *mutationsPhase != "" && *mutationsPhase != "write" && *mutationsPhase != "read" {
 		log.Fatal("mutations-phase must be write or read")
@@ -60,17 +62,7 @@ func main() {
 	// Use TLS verification and the official cookie domain while dialing the
 	// concrete ingress host. No credentials or session values are printed.
 	for _, addr := range strings.Split(*targets, ",") {
-		jar, err := cookiejar.New(nil)
-		if err != nil {
-			log.Fatal(err)
-		}
-		transport := &http.Transport{
-			TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS13, RootCAs: roots},
-			DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
-				return (&net.Dialer{Timeout: 3 * time.Second}).DialContext(ctx, network, addr)
-			},
-		}
-		client := &http.Client{Transport: transport, Jar: jar, Timeout: 10 * time.Second}
+		client := ingressClient(addr, roots, nil)
 		if _, err := request(client, http.MethodPost, "/api/login", `{"username":"test001","password":"test"}`); err != nil {
 			log.Fatal(err)
 		}
@@ -130,8 +122,27 @@ func main() {
 			}
 			fmt.Printf("%s: reference %s, reservation, duplicate tags and nested comment metadata passed\n", addr, *referencesPhase)
 		}
-		transport.CloseIdleConnections()
+		client.CloseIdleConnections()
 	}
+	if *crossIngress {
+		if err := checkCrossIngress(strings.Split(*targets, ","), roots, *dnsServer, *dnsAddress, *dnsCommonAddress); err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println("DNS routing, shared session and bidirectional icon updates within two seconds passed")
+	}
+}
+
+func ingressClient(addr string, roots *x509.CertPool, jar http.CookieJar) *http.Client {
+	if jar == nil {
+		jar, _ = cookiejar.New(nil)
+	}
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS13, RootCAs: roots},
+		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+			return (&net.Dialer{Timeout: 3 * time.Second}).DialContext(ctx, network, addr)
+		},
+	}
+	return &http.Client{Transport: transport, Jar: jar, Timeout: 10 * time.Second}
 }
 
 type smokeReferenceUser struct {
@@ -319,8 +330,8 @@ func checkIcons(client *http.Client, addr string, write bool) error {
 	if err != nil {
 		return err
 	}
-	// Trailing JPEG bytes keep the supplied image decodable and identify each host.
-	image := append(fallback, []byte("\nicon-smoke:"+addr)...)
+	// Both ingress hosts share the same durable user and icon owner.
+	image := append(fallback, []byte("\nicon-smoke:shared-owner")...)
 	hash := fmt.Sprintf("%x", sha256.Sum256(image))
 	if write {
 		body, _ := json.Marshal(struct {
