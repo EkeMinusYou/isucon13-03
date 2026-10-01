@@ -1,13 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -17,14 +18,23 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-func TestIconFilesAndConditionalGET(t *testing.T) {
-	s := &iconStore{dir: t.TempDir(), byName: make(map[string]*iconEntry), byID: make(map[int64]*iconEntry)}
+func testIconJournal(t *testing.T) *postStore {
+	t.Helper()
+	s := writerTestStore(t)
+	s.writers.Add(1)
+	go s.writePosts()
+	return s
+}
+
+func TestIconWALAndConditionalGET(t *testing.T) {
+	s := &iconStore{journal: testIconJournal(t), byName: make(map[string]*iconEntry), byID: make(map[int64]*iconEntry)}
 	image := []byte("persisted-icon")
 	hash, err := s.persist(image)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Concurrent publication of identical content must leave a complete readable file.
+	// Reusing a durable hash must not add a frame or another Sync.
+	before := s.journal.syncs.Load()
 	var wg sync.WaitGroup
 	for i := 0; i < 2; i++ {
 		wg.Add(1)
@@ -36,13 +46,16 @@ func TestIconFilesAndConditionalGET(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	stored, err := os.ReadFile(filepath.Join(s.dir, hash))
+	reader, err := s.journal.iconReader(hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err := io.ReadAll(reader)
 	if err != nil || string(stored) != string(image) {
 		t.Fatalf("persisted file: image=%q err=%v", stored, err)
 	}
-	info, err := os.Stat(filepath.Join(s.dir, hash))
-	if err != nil || info.Mode().Perm() != 0644 {
-		t.Fatalf("nginx-readable file permissions: info=%v err=%v", info, err)
+	if s.journal.syncs.Load() != before {
+		t.Fatal("duplicate image required another Sync")
 	}
 	previous := currentIcons
 	currentIcons = s
@@ -104,10 +117,18 @@ func checkIconsMySQL(t *testing.T, db *sqlx.DB, e *echo.Echo, store *struct{}) {
 			t.Fatal("concurrent icon uploads timed out")
 		}
 	}
-	dir := currentIcons.dir
+	journal := currentIcons.journal
 	// Rebuild the complete in-memory index from durable state, as on app restart.
 	var err error
-	currentIcons, err = newIconStore(context.Background(), dir)
+	if err = journal.close(); err != nil {
+		t.Fatal(err)
+	}
+	journal, err = openPostStore(context.Background(), db, filepath.Dir(journal.file.Name()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	currentMutations.Store(journal)
+	currentIcons, err = newIconStore(context.Background(), journal)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +144,11 @@ func checkIconsMySQL(t *testing.T, db *sqlx.DB, e *echo.Echo, store *struct{}) {
 		if rec.Code != 200 || fmt.Sprintf("%x", sha256.Sum256(rec.Body.Bytes())) != hash || rec.Header().Get("ETag") != "\""+hash+"\"" {
 			t.Fatalf("restored index disagrees with database: name=%s status=%d headers=%v", name, rec.Code, rec.Header())
 		}
-		image, err := os.ReadFile(filepath.Join(dir, hash))
+		reader, err := journal.iconReader(hash)
+		if err != nil {
+			t.Fatal(err)
+		}
+		image, err := io.ReadAll(reader)
 		if err != nil || fmt.Sprintf("%x", sha256.Sum256(image)) != hash {
 			t.Fatalf("restored hash disagrees with file: name=%s err=%v", name, err)
 		}
@@ -137,12 +162,60 @@ func checkIconsMySQL(t *testing.T, db *sqlx.DB, e *echo.Echo, store *struct{}) {
 	if rec := improvementRequest(t, e, store, http.MethodGet, "/api/user/beta/icon", "", 1); rec.Code != 200 || rec.Body.Len() != 0 || rec.Header().Get("ETag") != "\""+emptyHash+"\"" {
 		t.Fatal("empty upload was replaced with fallback")
 	}
-	// A failed file write must leave the published database pointer unchanged.
-	originalDir := currentIcons.dir
-	currentIcons.dir = filepath.Join(dir, "missing-directory")
+	// Recover fragmented images and ignore an image whose last chunk never arrived.
+	large := bytes.Repeat([]byte("fragmented-icon"), 12000)
+	body, _ = json.Marshal(PostIconRequest{Image: large})
+	if rec := improvementRequest(t, e, store, http.MethodPost, "/api/icon", string(body), 1); rec.Code != 201 {
+		t.Fatalf("fragmented upload: %s", rec.Body.String())
+	}
+	orphan := bytes.Repeat([]byte("unfinished"), 10000)
+	orphanHash := fmt.Sprintf("%x", sha256.Sum256(orphan))
+	request := postRequest{record: postRecord{Kind: "icon", IconHash: orphanHash, IconTotal: int64(len(orphan)), IconSize: iconChunkSize, iconData: orphan[:iconChunkSize]}, done: make(chan postResult, 1)}
+	journal.requests <- request
+	if result := <-request.done; result.err != nil {
+		t.Fatal(result.err)
+	}
+	for restart := 0; restart < 2; restart++ {
+		if err := journal.close(); err != nil {
+			t.Fatal(err)
+		}
+		journal, err = openPostStore(context.Background(), db, filepath.Dir(journal.file.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		currentMutations.Store(journal)
+		currentIcons, err = newIconStore(context.Background(), journal)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rec := improvementRequest(t, e, store, http.MethodGet, "/api/user/alpha/icon", "", 1)
+		if rec.Code != 200 || !bytes.Equal(rec.Body.Bytes(), large) {
+			t.Fatal("fragmented icon lost after restart")
+		}
+		if restart == 0 {
+			if journal.hasIcon(orphanHash) {
+				t.Fatal("unfinished image was recovered as durable")
+			}
+			if key, err := journal.persistIcon(context.Background(), orphan); err != nil || key != orphanHash {
+				t.Fatalf("image retry after partial replay: %s %v", key, err)
+			}
+		} else {
+			reader, err := journal.iconReader(orphanHash)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := io.ReadAll(reader)
+			if err != nil || !bytes.Equal(got, orphan) {
+				t.Fatal("retried image lost after second restart")
+			}
+		}
+	}
+	// Failed admission must leave the published database pointer unchanged.
+	queue := journal.iconRequests
+	journal.iconRequests = nil
 	body, _ = json.Marshal(PostIconRequest{Image: []byte("must-not-publish")})
 	rec := improvementRequest(t, e, store, http.MethodPost, "/api/icon", string(body), 2)
-	currentIcons.dir = originalDir
+	journal.iconRequests = queue
 	var hash string
 	if err := db.Get(&hash, "SELECT icon_hash FROM users WHERE id=2"); err != nil || rec.Code != 500 || hash != emptyHash {
 		t.Fatalf("failed persistence changed state: status=%d hash=%s err=%v", rec.Code, hash, err)
@@ -151,7 +224,9 @@ func checkIconsMySQL(t *testing.T, db *sqlx.DB, e *echo.Echo, store *struct{}) {
 	if _, err := db.Exec("UPDATE users SET icon_hash=''; TRUNCATE TABLE icons"); err != nil {
 		t.Fatal(err)
 	}
-	if err := currentIcons.reset(context.Background()); err != nil {
+	resetTestPosts(t, db)
+	currentIcons, err = newIconStore(context.Background(), currentMutations.Load())
+	if err != nil {
 		t.Fatal(err)
 	}
 	if err := reloadReferences(context.Background()); err != nil {
@@ -160,9 +235,8 @@ func checkIconsMySQL(t *testing.T, db *sqlx.DB, e *echo.Echo, store *struct{}) {
 	if rec := improvementRequest(t, e, store, http.MethodGet, "/api/user/alpha/icon", "", 1); rec.Code != 200 || fmt.Sprintf("%x", sha256.Sum256(rec.Body.Bytes())) != currentIcons.fallbackHash {
 		t.Fatal("initialization did not restore fallback")
 	}
-	files, err := os.ReadDir(dir)
-	if err != nil || len(files) != 1 || files[0].Name() != currentIcons.fallbackHash {
-		t.Fatalf("initialization retained old generations: files=%v err=%v", files, err)
+	if len(currentIcons.journal.icons) != 1 || !currentIcons.journal.hasIcon(currentIcons.fallbackHash) {
+		t.Fatal("initialization retained old image generation")
 	}
 	t.Log("concurrent uploads, durable reload, empty image, failed write and initialization passed")
 }

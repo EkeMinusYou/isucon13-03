@@ -113,7 +113,8 @@ UPDATE livecomment_reports SET comment_created_at=livecomment_id;`); err != nil 
 	}
 	previousIcons := currentIcons
 	defer func() { currentIcons = previousIcons }()
-	currentIcons, err = newIconStore(context.Background(), t.TempDir())
+	resetTestPosts(t, db)
+	currentIcons, err = newIconStore(context.Background(), currentMutations.Load())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +135,6 @@ UPDATE livecomment_reports SET comment_created_at=livecomment_id;`); err != nil 
 	if err := reloadReferences(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	resetTestPosts(t, db)
 	e := echo.New()
 	store := &struct{}{}
 	e.GET("/api/user/:username/statistics", getUserStatisticsHandler)

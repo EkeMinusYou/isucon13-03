@@ -60,6 +60,12 @@ func (s *postStore) publishRecords(records []postRecord, reserve bool) error {
 	defer s.dataMu.Unlock()
 	s.initState()
 	for _, r := range records {
+		if r.Kind == "icon" {
+			if err := s.publishIconChunk(r); err != nil {
+				return err
+			}
+			continue
+		}
 		state, err := s.stream(r.StreamID)
 		if err != nil {
 			return err

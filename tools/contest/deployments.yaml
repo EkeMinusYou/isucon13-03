@@ -2,6 +2,32 @@
 include: [../deployctl/deployments.yaml]
 
 deployments:
+  shared-wal-stop:
+    activations:
+      - label: stop the application before replacing the WAL format
+        role: app
+        script: |
+          set -eu
+          sudo systemctl stop {var:service}
+          test "$(sudo systemctl show {var:service} -p MainPID --value)" = 0
+
+  shared-wal-reset:
+    activations:
+      - label: mark competition data unready for official initialization
+        role: app_db
+        script: |
+          set -eu
+          sudo mysql {var:db_name} -e 'UPDATE post_wal_state SET ready=FALSE WHERE id=1'
+
+  shared-wal-cleanup:
+    activations:
+      - label: remove obsolete individual image files after shared WAL initialization
+        role: app
+        script: |
+          set -eu
+          curl --fail --silent --show-error 'http://127.0.0.1:{var:listen_port}/api/tag' >/dev/null
+          sudo rm -rf /var/lib/isupipe/icons
+
   icon-edge-module:
     uploads:
       - {label: nginx njs module, role: nginx, local: .task/icon-edge/build/ngx_http_js_module.so, remote: /etc/nginx/ngx_http_js_module.so}
@@ -105,7 +131,7 @@ deployments:
         script: |
           set -eu
           sudo chown -R {var:isucon_user}:{var:isucon_user} {var:remote_home}/{var:app_dir} {var:remote_home}/webapp/sql {var:remote_home}/webapp/pdns
-          sudo install -d -o {var:isucon_user} -g {var:isucon_user} -m 0755 /var/lib/isupipe /var/lib/isupipe/icons /var/lib/isupipe/wal
+          sudo install -d -o {var:isucon_user} -g {var:isucon_user} -m 0755 /var/lib/isupipe /var/lib/isupipe/wal
           sudo systemctl daemon-reload
           sudo systemctl restart {var:service}
           sudo systemctl is-active --quiet {var:service}
@@ -119,7 +145,7 @@ deployments:
         script: |
           set -eu
           sudo chown -R {var:isucon_user}:{var:isucon_user} {var:remote_home}/{var:app_dir} {var:remote_home}/webapp/sql {var:remote_home}/webapp/pdns
-          sudo install -d -o {var:isucon_user} -g {var:isucon_user} -m 0755 /var/lib/isupipe /var/lib/isupipe/icons /var/lib/isupipe/wal
+          sudo install -d -o {var:isucon_user} -g {var:isucon_user} -m 0755 /var/lib/isupipe /var/lib/isupipe/wal
           sudo systemctl daemon-reload
           sudo systemctl restart {var:service}
           sudo systemctl is-active --quiet {var:service}
@@ -239,6 +265,14 @@ deployments:
           esac
 
 plans:
+  shared-wal:
+    deployments:
+      shared-wal-stop: {}
+      shared-wal-reset: {needs: [shared-wal-stop]}
+      app-after-schema: {needs: [shared-wal-reset]}
+      app-initialize: {needs: [app-after-schema]}
+      shared-wal-cleanup: {needs: [app-initialize]}
+
   dual-ingress:
     deployments:
       app: {}

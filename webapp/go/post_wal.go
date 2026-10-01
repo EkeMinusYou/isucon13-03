@@ -19,11 +19,11 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-const postMagic = "ISUPWAL3"
+const postMagic = "ISUPWAL4"
 const postHeaderSize = len(postMagic) + 36 + 8
 const postFrameLimit = 1 << 20
 const postFrameHeaderSize = 16
-const postFrameFooter = "WALDONE3"
+const postFrameFooter = "WALDONE4"
 const postFrameFooterSize = len(postFrameFooter) + postFrameHeaderSize
 const postEndSize = postFrameHeaderSize
 
@@ -41,11 +41,19 @@ type postRecord struct {
 	CreatedAt int64                   `json:"created"`
 	Deleted   []int64                 `json:"deleted,omitempty"`
 	Report    *LivecommentReportModel `json:"report,omitempty"`
+	IconHash  string                  `json:"hash,omitempty"`
+	IconTotal int64                   `json:"total,omitempty"`
+	IconStart int64                   `json:"start,omitempty"`
+	IconSize  int                     `json:"size,omitempty"`
+	iconData  []byte
+	iconPos   int64
 }
 
 func (r postRecord) cost() int64 {
 	switch r.Kind {
 	case "exit":
+		return 0
+	case "icon":
 		return 0
 	case "report":
 		if r.Report != nil {
@@ -240,7 +248,7 @@ func openPostStore(ctx context.Context, db *sqlx.DB, dir string) (*postStore, er
 	if capacity < int64(postHeaderSize+postEndSize) || capacity > postWALLimit || info.Size() != capacity {
 		return nil, fmt.Errorf("WAL capacity or physical size mismatch")
 	}
-	s := &postStore{db: db, generation: state.Generation, file: file, capacity: capacity, streams: make(map[int64]*postStream), slots: make(chan struct{}, 256), requests: make(chan postRequest, 256), nextComment: 1, nextReaction: 1, nextWord: 1, nextReport: 1}
+	s := &postStore{db: db, generation: state.Generation, file: file, capacity: capacity, streams: make(map[int64]*postStream), slots: make(chan struct{}, 256), requests: make(chan postRequest, 256), iconRequests: make(chan *iconWrite, 16), icons: make(map[string]*walIcon), nextComment: 1, nextReaction: 1, nextWord: 1, nextReport: 1}
 	if err := s.load(ctx); err != nil {
 		return nil, err
 	}
@@ -283,6 +291,9 @@ func openPostStore(ctx context.Context, db *sqlx.DB, dir string) (*postStore, er
 				*counter = r.ID + 1
 			}
 		}
+		for i := range frame {
+			frame[i].iconPos += offset
+		}
 		if err := s.publishRecords(frame, true); err != nil {
 			return nil, err
 		}
@@ -295,6 +306,9 @@ func openPostStore(ctx context.Context, db *sqlx.DB, dir string) (*postStore, er
 	s.publishedSeq.Store(seq)
 	s.durableBytes.Store(offset)
 	s.publishedBytes.Store(offset)
+	// Complete frames at the tail may contain an unfinished image. Such an image
+	// has no published DB pointer and is deliberately absent from the read index.
+	s.discardIncompleteIcons()
 	ok = true
 	s.syncFile = func() error { return syncPostData(file) }
 	s.writtenSeq, s.writtenBytes = seq, offset
@@ -304,9 +318,27 @@ func openPostStore(ctx context.Context, db *sqlx.DB, dir string) (*postStore, er
 }
 
 func encodePostFrame(records []postRecord) ([]byte, error) {
-	payload, err := json.Marshal(records)
+	meta, err := json.Marshal(records)
 	if err != nil {
 		return nil, err
+	}
+	size := 4 + len(meta)
+	for _, r := range records {
+		if len(r.iconData) != r.IconSize {
+			return nil, fmt.Errorf("WAL icon size mismatch")
+		}
+		size += len(r.iconData)
+	}
+	payload := make([]byte, size)
+	binary.LittleEndian.PutUint32(payload[:4], uint32(len(meta)))
+	copy(payload[4:], meta)
+	offset := 4 + len(meta)
+	for i := range records {
+		if records[i].Kind == "icon" {
+			records[i].iconPos = int64(postFrameHeaderSize + offset)
+		}
+		copy(payload[offset:], records[i].iconData)
+		offset += len(records[i].iconData)
 	}
 	if len(payload) > postFrameLimit {
 		return nil, fmt.Errorf("WAL frame too large")
@@ -367,17 +399,37 @@ func readPostFrame(file io.Reader, previous uint64) ([]postRecord, int64, error)
 		return nil, 0, fmt.Errorf("WAL checksum mismatch")
 	}
 	var records []postRecord
-	if err := json.Unmarshal(payload, &records); err != nil {
+	if len(payload) < 4 {
+		return nil, 0, fmt.Errorf("WAL metadata prefix missing")
+	}
+	metaSize := int(binary.LittleEndian.Uint32(payload[:4]))
+	if metaSize > len(payload)-4 {
+		return nil, 0, fmt.Errorf("WAL metadata size mismatch")
+	}
+	if err := json.Unmarshal(payload[4:4+metaSize], &records); err != nil {
 		return nil, 0, err
 	}
 	if len(records) == 0 || len(records) > 64 {
 		return nil, 0, fmt.Errorf("invalid WAL frame count")
 	}
-	for _, r := range records {
-		if previous == math.MaxUint64 || r.Seq != previous+1 || !validPostRecord(r) {
+	dataOffset := 4 + metaSize
+	for i := range records {
+		r := &records[i]
+		if r.IconSize < 0 || r.IconSize > len(payload)-dataOffset {
+			return nil, 0, fmt.Errorf("WAL icon payload size mismatch")
+		}
+		if r.Kind == "icon" {
+			r.iconData = payload[dataOffset : dataOffset+r.IconSize]
+			r.iconPos = int64(postFrameHeaderSize + dataOffset)
+		}
+		dataOffset += r.IconSize
+		if previous == math.MaxUint64 || r.Seq != previous+1 || !validPostRecord(*r) {
 			return nil, 0, fmt.Errorf("invalid WAL record")
 		}
 		previous = r.Seq
+	}
+	if dataOffset != len(payload) {
+		return nil, 0, fmt.Errorf("WAL has unused payload bytes")
 	}
 	return records, frameSize, nil
 }
@@ -410,13 +462,45 @@ func (s *postStore) writePosts() {
 	done := make(chan struct{})
 	go func() { defer close(done); s.syncPosts() }()
 	defer func() { close(s.syncWake); <-done }()
-	for first := range s.requests {
-		batch := []postRequest{first}
-	collect:
-		for len(batch) < 64 {
+	posts, icons := s.requests, s.iconRequests
+	var active []*iconWrite
+	for posts != nil || icons != nil || len(active) > 0 {
+		batch := make([]postRequest, 0, 64)
+		// Rotate image jobs in 64 KiB units. Every round also drains ready posts.
+		// No timer or collection delay is inserted into the commit path.
+		if len(active) == 0 && len(posts) == 0 {
 			select {
-			case r, ok := <-s.requests:
+			case r, ok := <-posts:
 				if !ok {
+					posts = nil
+				} else {
+					batch = append(batch, r)
+				}
+			case job, ok := <-icons:
+				if !ok {
+					icons = nil
+				} else {
+					active = append(active, job)
+				}
+			}
+		}
+		if icons != nil {
+			select {
+			case job, ok := <-icons:
+				if !ok {
+					icons = nil
+				} else {
+					active = append(active, job)
+				}
+			default:
+			}
+		}
+	collect:
+		for len(batch) < 63 && posts != nil {
+			select {
+			case r, ok := <-posts:
+				if !ok {
+					posts = nil
 					break collect
 				}
 				batch = append(batch, r)
@@ -424,7 +508,29 @@ func (s *postStore) writePosts() {
 				break collect
 			}
 		}
-		s.appendPostBatch(batch)
+		if len(active) > 0 {
+			job := active[0]
+			active = active[1:]
+			if err := s.check(); err != nil {
+				job.done <- postResult{err: err}
+			} else {
+				n := len(job.data) - job.offset
+				if n > iconChunkSize {
+					n = iconChunkSize
+				}
+				r := postRequest{record: postRecord{Kind: "icon", IconHash: job.hash, IconTotal: int64(len(job.data)), IconStart: int64(job.offset), IconSize: n, iconData: job.data[job.offset : job.offset+n]}}
+				job.offset += n
+				if job.offset == len(job.data) {
+					r.done = job.done
+				} else {
+					active = append(active, job)
+				}
+				batch = append(batch, r)
+			}
+		}
+		if len(batch) > 0 {
+			s.appendPostBatch(batch)
+		}
 	}
 }
 
@@ -464,6 +570,9 @@ func (s *postStore) appendPostBatch(batch []postRequest) {
 		// Publish the frame boundary only after the complete write. Sync may overlap
 		// subsequent writes, but acknowledgements never exceed its captured boundary.
 		s.walMu.Lock()
+		for i := range records {
+			records[i].iconPos += s.writtenBytes
+		}
 		err = writePostBytes(s.file, frame)
 		if err == nil {
 			s.writtenBytes += int64(len(frame))
@@ -476,8 +585,12 @@ func (s *postStore) appendPostBatch(batch []postRequest) {
 		}
 	}
 	if err != nil {
+		// Never continue a partially accepted image after a capacity/encoding error.
+		s.fail(err)
 		for i, r := range batch {
-			r.done <- postResult{record: records[i], err: err}
+			if r.done != nil {
+				r.done <- postResult{record: records[i], err: err}
+			}
 		}
 		return
 	}
@@ -545,13 +658,22 @@ func (s *postStore) syncPostBatches(batches []postBatch) {
 			s.publishedBytes.Store(last.end)
 			s.publishedSeq.Store(s.durableSeq.Load())
 			for _, batch := range batches {
-				s.records.Add(uint64(len(batch.records)))
+				for _, r := range batch.records {
+					if r.Kind == "icon" {
+						s.iconChunks.Add(1)
+						s.iconBytes.Add(uint64(r.IconSize))
+					} else {
+						s.records.Add(1)
+					}
+				}
 			}
 		}
 	}
 	for _, batch := range batches {
 		for i, r := range batch.requests {
-			r.done <- postResult{record: batch.records[i], err: err}
+			if r.done != nil {
+				r.done <- postResult{record: batch.records[i], err: err}
+			}
 		}
 	}
 }
@@ -570,6 +692,12 @@ func (s *postStore) idCounter(kind string) *int64 {
 	return nil
 }
 func validPostRecord(r postRecord) bool {
+	if r.Kind == "icon" {
+		return r.ID == 0 && r.Report == nil && validIconHash(r.IconHash) && r.IconTotal >= 0 && r.IconTotal <= iconMaxSize && r.IconStart >= 0 && r.IconStart <= r.IconTotal && r.IconSize >= 0 && r.IconSize <= iconChunkSize && r.IconStart+int64(r.IconSize) <= r.IconTotal && (r.IconSize > 0 || r.IconTotal == 0)
+	}
+	if r.IconSize != 0 || r.IconHash != "" || r.IconTotal != 0 || r.IconStart != 0 {
+		return false
+	}
 	if !utf8.ValidString(r.Text) || utf8.RuneCountInString(r.Text) > 255 {
 		return false
 	}

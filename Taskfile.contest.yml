@@ -9,6 +9,44 @@
 version: '3'
 
 tasks:
+  deploy-shared-wal-dry:
+    desc: 共通WAL配布と競技データ初期化の対象・順序を表示する
+    deps: [gen, build-deployctl]
+    cmds:
+      - task: prepare-db-assets
+      - '{{.DEPLOYCTL_DIR}}/deployctl apply-plan shared-wal -dry-run -config {{.DEPLOYCTL_CONFIG}} {{.DEPLOYCTL_COMMON}}'
+
+  deploy-shared-wal:
+    desc: 3号機へ共通WALを配布し公式初期化で競技データを作り直す
+    preconditions:
+      - sh: test ! -f '{{.RUN_STATE_FILE}}'
+        msg: active benchmark exists
+    deps: [gen, build, build-deployctl]
+    cmds:
+      - task: inspect-dns-batching-prereqs
+      - task: prepare-db-assets
+      - task: deploy-plan
+        vars: { PLAN: shared-wal }
+
+  inspect-shared-wal:
+    desc: 共通WALの対象ホスト・画像容量・空き容量を読み取り確認する
+    cmds:
+      - task: inspect-dns-batching-prereqs
+      - for: { var: APP_HOSTS }
+        cmd: |
+          {{.SSH}} {{.SSH_USER}}@{{.ITEM}} '
+            set -eu
+            echo "{{.ITEM}}: shared WAL and icon source"
+            sudo du -sb /var/lib/isupipe/wal
+            if test -d /var/lib/isupipe/icons; then
+              sudo du -sb /var/lib/isupipe/icons
+              sudo find /var/lib/isupipe/icons -maxdepth 1 -type f | wc -l
+            fi
+            df -B1 /var/lib/isupipe/wal
+            findmnt -T /var/lib/isupipe/wal -o TARGET,FSTYPE,OPTIONS
+            curl --fail --silent http://127.0.0.1:6060/debug/sql-pools
+          '
+
   inspect-special-sauce:
     desc: 秘伝のタレの反映前に計測停止・ホスト上限・現行実効値を読み取り確認する
     preconditions:

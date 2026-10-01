@@ -64,6 +64,12 @@ type postStore struct {
 	writtenSeq                   uint64
 	writtenBytes                 int64
 	nextWord, nextReport         int64
+	iconMu                       sync.Mutex
+	icons                        map[string]*walIcon
+	iconRequests                 chan *iconWrite
+	iconPendingBytes             int64
+	iconReuses, iconUploads      atomic.Uint64
+	iconBytes, iconChunks        atomic.Uint64
 	dataMu                       sync.RWMutex
 	commentsByID                 map[int64]LivecommentModel
 	userNames                    map[int64]string
@@ -161,6 +167,9 @@ func (s *postStore) close() error {
 		return nil
 	}
 	close(s.requests)
+	if s.iconRequests != nil {
+		close(s.iconRequests)
+	}
 	s.writers.Wait()
 	s.mu.Lock()
 	s.closed = true
@@ -179,7 +188,7 @@ func (s *postStore) metrics() map[string]any {
 	s.walMu.Lock()
 	pending := s.writtenBytes - s.durableBytes.Load()
 	s.walMu.Unlock()
-	return map[string]any{"generation": s.generation, "durable_seq": s.durableSeq.Load(), "published_seq": s.publishedSeq.Load(), "wal_bytes": s.durableBytes.Load(), "pending_bytes": pending, "rows": rows, "model_budget_bytes": memory, "records": s.records.Load(), "syncs": s.syncs.Load(), "sync_ns": s.syncNanos.Load(), "single_record_syncs": s.singleRecordSyncs.Load(), "failed": failed}
+	return map[string]any{"generation": s.generation, "durable_seq": s.durableSeq.Load(), "published_seq": s.publishedSeq.Load(), "wal_bytes": s.durableBytes.Load(), "pending_bytes": pending, "rows": rows, "model_budget_bytes": memory, "records": s.records.Load(), "syncs": s.syncs.Load(), "sync_ns": s.syncNanos.Load(), "single_record_syncs": s.singleRecordSyncs.Load(), "failed": failed, "icon_reuses": s.iconReuses.Load(), "icon_uploads": s.iconUploads.Load(), "icon_bytes": s.iconBytes.Load(), "icon_chunks": s.iconChunks.Load()}
 }
 
 func postDirectory() string {

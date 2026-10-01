@@ -2,14 +2,11 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"github.com/google/uuid"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -25,7 +22,7 @@ type iconEntry struct {
 }
 
 type iconStore struct {
-	dir          string
+	journal      *postStore
 	fallbackHash string
 	lifecycle    sync.RWMutex
 	mu           sync.RWMutex
@@ -39,18 +36,11 @@ type iconStore struct {
 
 var currentIcons *iconStore
 
-func iconDirectory() string {
-	if dir := os.Getenv("ISUCON_ICON_DIR"); dir != "" {
-		return dir
+func newIconStore(ctx context.Context, journal *postStore) (*iconStore, error) {
+	if journal == nil {
+		return nil, fmt.Errorf("icon WAL is unavailable")
 	}
-	return "/var/lib/isupipe/icons"
-}
-
-func newIconStore(ctx context.Context, dir string) (*iconStore, error) {
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return nil, err
-	}
-	s := &iconStore{dir: dir}
+	s := &iconStore{journal: journal}
 	image, err := os.ReadFile(fallbackImage)
 	if err != nil {
 		return nil, err
@@ -65,48 +55,9 @@ func newIconStore(ctx context.Context, dir string) (*iconStore, error) {
 	return s, nil
 }
 
-func (s *iconStore) syncDirectory() error {
-	dir, err := os.Open(s.dir)
-	if err != nil {
-		return err
-	}
-	defer dir.Close()
-	return dir.Sync()
-}
-
-// A database pointer is published only after the file and its directory are durable.
+// A database pointer is published only after the shared WAL owns a durable blob.
 func (s *iconStore) persist(image []byte) (string, error) {
-	digest := sha256.Sum256(image)
-	hash := hex.EncodeToString(digest[:])
-	path := filepath.Join(s.dir, hash)
-	if _, err := os.Stat(path); err == nil {
-		// Another upload may have just renamed an already-synced identical file.
-		return hash, s.syncDirectory()
-	} else if !os.IsNotExist(err) {
-		return "", err
-	}
-	file, err := os.CreateTemp(s.dir, ".upload-")
-	if err != nil {
-		return "", err
-	}
-	defer os.Remove(file.Name())
-	defer file.Close()
-	if err := file.Chmod(0644); err != nil {
-		return "", err
-	}
-	if _, err := file.Write(image); err != nil {
-		return "", err
-	}
-	if err := file.Sync(); err != nil {
-		return "", err
-	}
-	if err := file.Close(); err != nil {
-		return "", err
-	}
-	if err := os.Rename(file.Name(), path); err != nil {
-		return "", err
-	}
-	return hash, s.syncDirectory()
+	return s.journal.persistIcon(context.Background(), image)
 }
 
 func validIconHash(hash string) bool {
@@ -142,8 +93,8 @@ func (s *iconStore) load(ctx context.Context) error {
 			return fmt.Errorf("invalid icon hash for user %d", user.ID)
 		}
 		if !checked[hash] {
-			if _, err := os.Stat(filepath.Join(s.dir, hash)); err != nil {
-				return fmt.Errorf("missing icon for user %d: %w", user.ID, err)
+			if !s.journal.hasIcon(hash) {
+				return fmt.Errorf("missing durable icon for user %d", user.ID)
 			}
 			checked[hash] = true
 		}
@@ -174,25 +125,6 @@ func (s *iconStore) addUser(id int64, name, hash string) *iconEntry {
 	return entry
 }
 
-// The caller holds lifecycle exclusively after the official database initialization.
-func (s *iconStore) reset(ctx context.Context) error {
-	files, err := os.ReadDir(s.dir)
-	if err != nil {
-		return err
-	}
-	for _, file := range files {
-		if file.Name() != s.fallbackHash && (validIconHash(file.Name()) || strings.HasPrefix(file.Name(), ".upload-")) {
-			if err := os.Remove(filepath.Join(s.dir, file.Name())); err != nil {
-				return err
-			}
-		}
-	}
-	if err := s.syncDirectory(); err != nil {
-		return err
-	}
-	return s.load(ctx)
-}
-
 func iconETagMatches(header, hash string) bool {
 	for _, value := range strings.Split(header, ",") {
 		value = strings.TrimPrefix(strings.TrimSpace(value), "W/")
@@ -218,13 +150,12 @@ func getIconHandler(c echo.Context) error {
 	if iconETagMatches(c.Request().Header.Get("If-None-Match"), hash) {
 		return c.NoContent(http.StatusNotModified)
 	}
-	// Keep immutable image files with their owner when nginx runs on another host.
-	file, err := os.Open(filepath.Join(s.dir, hash))
+	// Read only immutable, durable WAL fragments from the origin owner.
+	reader, err := s.journal.iconReader(hash)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to open icon: "+err.Error())
 	}
-	defer file.Close()
-	return c.Stream(http.StatusOK, "image/jpeg", file)
+	return c.Stream(http.StatusOK, "image/jpeg", reader)
 }
 
 func postIconHandler(c echo.Context) error {

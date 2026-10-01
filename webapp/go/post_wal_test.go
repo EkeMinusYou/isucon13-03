@@ -85,10 +85,10 @@ func writerTestStore(t *testing.T) *postStore {
 	if err := initializePostFile(context.Background(), file, "00000000-0000-0000-0000-000000000000", capacity); err != nil {
 		t.Fatal(err)
 	}
-	s := &postStore{file: file, capacity: capacity, syncFile: func() error { return syncPostData(file) }, streams: make(map[int64]*postStream), slots: make(chan struct{}, 256), requests: make(chan postRequest, 256), nextComment: 1, nextReaction: 1, nextWord: 1, nextReport: 1}
+	s := &postStore{file: file, capacity: capacity, syncFile: func() error { return syncPostData(file) }, streams: make(map[int64]*postStream), slots: make(chan struct{}, 256), requests: make(chan postRequest, 256), iconRequests: make(chan *iconWrite, 16), icons: make(map[string]*walIcon), nextComment: 1, nextReaction: 1, nextWord: 1, nextReport: 1}
 	s.durableBytes.Store(int64(postHeaderSize))
 	s.publishedBytes.Store(int64(postHeaderSize))
-	t.Cleanup(func() { close(s.requests); s.writers.Wait(); file.Close() })
+	t.Cleanup(func() { close(s.requests); close(s.iconRequests); s.writers.Wait(); file.Close() })
 	return s
 }
 

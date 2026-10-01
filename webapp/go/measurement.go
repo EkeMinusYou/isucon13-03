@@ -27,6 +27,10 @@ func measurementHandler(maxSeconds int) http.Handler {
 			metrics["wal_bytes"] = posts["wal_bytes"]
 			metrics["wal_durable_seq"] = posts["durable_seq"]
 			metrics["wal_published_seq"] = posts["published_seq"]
+			metrics["icon_reuses_total"] = posts["icon_reuses"]
+			metrics["icon_uploads_total"] = posts["icon_uploads"]
+			metrics["icon_wal_bytes_total"] = posts["icon_bytes"]
+			metrics["icon_wal_chunks_total"] = posts["icon_chunks"]
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{

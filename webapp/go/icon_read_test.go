@@ -95,7 +95,7 @@ func TestIconReplicaClientAllowlist(t *testing.T) {
 }
 
 func TestIconReplicaUpdatesExpiryAndRestart(t *testing.T) {
-	s := &iconStore{dir: t.TempDir(), byName: make(map[string]*iconEntry), byID: make(map[int64]*iconEntry), epoch: "initial"}
+	s := &iconStore{journal: testIconJournal(t), byName: make(map[string]*iconEntry), byID: make(map[int64]*iconEntry), epoch: "initial"}
 	first, err := s.persist([]byte("first"))
 	if err != nil {
 		t.Fatal(err)

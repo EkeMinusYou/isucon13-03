@@ -126,19 +126,6 @@ func initializeHandler(c echo.Context) error {
 	if err := reloadTags(c.Request().Context()); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to load tags: "+err.Error())
 	}
-	if currentIcons == nil {
-		var err error
-		currentIcons, err = newIconStore(c.Request().Context(), iconDirectory())
-		if err != nil {
-			return echo.NewHTTPError(http.StatusInternalServerError, "failed to load icons: "+err.Error())
-		}
-	} else if err := currentIcons.reset(c.Request().Context()); err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to reset icons: "+err.Error())
-	}
-	if err := reloadReferences(c.Request().Context()); err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to load references: "+err.Error())
-	}
-
 	if err := updateDNS(c.Request().Context(), "/reset", ""); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to initialize DNS: "+err.Error())
 	}
@@ -148,6 +135,16 @@ func initializeHandler(c echo.Context) error {
 	}
 	store, err := openPostStore(c.Request().Context(), dbConn, postDirectory())
 	if err != nil {
+		_, _ = dbConn.Exec("UPDATE post_wal_state SET ready=FALSE WHERE id=1")
+		return mutationHTTPError(err)
+	}
+	icons, err := newIconStore(c.Request().Context(), store)
+	if err == nil {
+		currentIcons = icons
+		err = reloadReferences(c.Request().Context())
+	}
+	if err != nil {
+		store.close()
 		_, _ = dbConn.Exec("UPDATE post_wal_state SET ready=FALSE WHERE id=1")
 		return mutationHTTPError(err)
 	}
@@ -256,7 +253,7 @@ func main() {
 		}
 	}()
 	if store != nil {
-		currentIcons, err = newIconStore(context.Background(), iconDirectory())
+		currentIcons, err = newIconStore(context.Background(), store)
 		if err != nil {
 			e.Logger.Fatalf("failed to load icons: %v", err)
 		}
