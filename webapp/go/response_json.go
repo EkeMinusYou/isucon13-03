@@ -95,7 +95,7 @@ func writeResponseJSON(c echo.Context, b *responseJSONBuffer) error {
 	return writeResponseJSONEncoding(c, b, false)
 }
 
-func writeTimelineResponseJSON(c echo.Context, b *responseJSONBuffer) error {
+func writeCompressedResponseJSON(c echo.Context, b *responseJSONBuffer) error {
 	return writeResponseJSONEncoding(c, b, true)
 }
 

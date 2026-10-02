@@ -161,8 +161,9 @@ tasks:
       - docker run --rm --platform linux/amd64 -v '{{.ROOT_DIR}}/nginx/njs:/etc/nginx/njs:ro' -v '{{.ROOT_DIR}}/tools/contest/nginx-njs:/checks:ro' -v '{{.ROOT_DIR}}/{{.APP_DIR}}/{{.APP_NAME}}:/app/isupipe:ro' isucon-icon-edge:local python3 /checks/check.py
 
   check-viewer-latency-local:
-    desc: 閲覧JSONのgzipとネイティブ304の正当性を確認する（競技ベンチなし）
+    desc: 検索・閲覧JSONのgzipとネイティブ304の正当性を確認する（競技ベンチなし）
     cmds:
+      - node tools/contest/nginx-njs/publish_test.mjs
       - cd '{{.APP_DIR}}' && go test -race ./... -run 'Test(ResponseJSON|TimelineGzip)'
       - task: check-icon-edge-local
 

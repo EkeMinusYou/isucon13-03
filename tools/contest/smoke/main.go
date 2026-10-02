@@ -95,7 +95,7 @@ func main() {
 		if err := checkTimelineGzip(client); err != nil {
 			log.Fatal(err)
 		}
-		fmt.Printf("%s: timeline gzip negotiation and decoded JSON passed\n", addr)
+		fmt.Printf("%s: search/timeline gzip negotiation and decoded JSON passed\n", addr)
 		if *mutationsPhase != "" {
 			if err := checkMutationPersistence(client, *mutationsPhase == "write"); err != nil {
 				log.Fatal(err)

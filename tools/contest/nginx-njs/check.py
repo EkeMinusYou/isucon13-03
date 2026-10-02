@@ -205,6 +205,14 @@ try:
     assert get_icon("W/"+first)[0] == 304
     print("PASS native 304, image, unknown user, special ETag, session validation and keepalive", flush=True)
 
+    renewal = publication([], mode="delta")
+    publish(renewal)
+    assert status()["fresh"] and status()["publish_id"] == renewal["publish_id"]
+    assert get_icon(first)[0] == 304
+    wait(lambda: open("/tmp/icon-access.log").read().splitlines()[-1] == "304|-|",
+         "unchanged renewal keeps native 304")
+    print("PASS unchanged lease renewal with native 304", flush=True)
+
     retry = publication([dict(name="alpha", hash=first_hash)])
     publish(retry)
     publish(retry)

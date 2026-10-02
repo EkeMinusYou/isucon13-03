@@ -48,7 +48,7 @@ func TestTimelineGzipNegotiationAndContent(t *testing.T) {
 				rec := httptest.NewRecorder()
 				rec.Header().Set("Vary", "Origin")
 				c := echo.New().NewContext(req, rec)
-				if err := writeTimelineResponseJSON(c, data); err != nil {
+				if err := writeCompressedResponseJSON(c, data); err != nil {
 					t.Fatal(err)
 				}
 				if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != echo.MIMEApplicationJSONCharsetUTF8 || (rec.Header().Get("Content-Encoding") == "gzip") != tc.gzip {

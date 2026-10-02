@@ -21,12 +21,20 @@ leases and non-GET methods use `@icon_reader`. Cookie decoding is only for the
 existing opaque log identity; it does not authenticate a request.
 
 The njs control handlers still own full/delta publication and invalidation.
-`task deploy-viewer-latency` deploys the Go timeline gzip implementation to
+An empty delta with an unchanged epoch and revision replaces only the lease and
+publication state, keeping the prior direct-304 path open until replacement.
+Changed hashes still require closing publication before any entry is modified;
+failed publication closes the path, and lease duration remains capped at 750 ms.
+`task deploy-viewer-latency` deploys the Go search/timeline gzip implementation to
 isucon-3 and restarts nginx on isucon-1 and isucon-2. A module replacement needs
 a master restart: reloading an existing master can retain the old loaded module.
 `task deploy-viewer-latency-dry` prints the exact targets and activation scripts.
+When only Go and the njs publication script change, use `task deploy-app` followed
+by `task deploy-nginx`; nginx reload preserves the shared dictionaries and does
+not require replacing the master. Verify with `task check-icon-edge` and
+`task check-app-deployment ICON_EDGE_CHECK=true`.
 
-The Go gzip path covers only successful comment/reaction timeline GETs. It
+The Go gzip path covers successful search and comment/reaction timeline GETs. It
 negotiates `Accept-Encoding`, retains `Vary: Accept-Encoding`, and uses pooled
 BestSpeed writers. Bodies below 1 KiB or bodies that do not shrink remain plain
 JSON. Pretty JSON and the trailing newline are preserved. Oversized compressor
@@ -37,7 +45,9 @@ compares identity JSON with decoded gzip JSON through both actual nginx hosts.
 reader against synthetic image data. It checks direct 304, session logging,
 lost acknowledgements, capacity failure, lease expiration, notifications,
 generation replacement, restart/reload, and the authoritative backup path.
-It does not execute the contest benchmark.
+It does not execute the contest benchmark. `task check-viewer-latency-local`
+also checks empty-delta publication visibility and failure handling with
+instrumented dictionaries, and runs the Go gzip tests with the race detector.
 
 The full snapshot publish endpoint keeps bounded request bodies in memory
 (`client_body_buffer_size 4m`) because njs `r.requestText` does not expose bodies

@@ -52,6 +52,16 @@ function publish(r) {
                 r.return(409); return;
             }
         }
+        const next = {publish_id: p.publish_id, epoch: p.epoch,
+            revision: p.revision, dirty: false, valid_until_ms: p.valid_until_ms};
+        // A snapshot-confirmed lease renewal changes no hashes. Keep the old
+        // publication readable until the new lease is atomically installed.
+        if (p.mode === 'delta' && p.revision === current.revision && p.changes.length === 0) {
+            control.set('state', JSON.stringify(next));
+            control.set('active', p.publish_id + ':' + p.valid_until_ms);
+            status(r);
+            return;
+        }
         // Close publication before any entry can change; failures keep it closed.
         control.delete('active');
         current.dirty = true;
@@ -68,8 +78,6 @@ function publish(r) {
             const change = p.changes[i];
             ngx.shared.icon_hashes.set(change.name, change.hash);
         }
-        const next = {publish_id: p.publish_id, epoch: p.epoch,
-            revision: p.revision, dirty: false, valid_until_ms: p.valid_until_ms};
         control.set('state', JSON.stringify(next));
         control.set('active', p.publish_id + ':' + p.valid_until_ms);
         status(r);

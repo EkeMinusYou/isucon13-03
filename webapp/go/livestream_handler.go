@@ -237,7 +237,7 @@ func searchLivestreamsHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to commit: "+err.Error())
 	}
 
-	return writeResponseJSON(c, livestreams)
+	return writeCompressedResponseJSON(c, livestreams)
 }
 
 func getMyLivestreamsHandler(c echo.Context) error {
