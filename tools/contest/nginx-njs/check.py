@@ -145,7 +145,7 @@ http {
     }
     server {
         listen 8081;
-        location ~ ^/api/user/(?<icon_username>[^/]+)/icon$ { js_content icon.serve; }
+        location ~ ^/api/user/(?<icon_username>[^/]+)/icon$ { isupipe_icon_native icon_hashes icon_control; }
         location @icon_reader {
             proxy_http_version 1.1;
             proxy_set_header Connection "";
@@ -185,11 +185,25 @@ try:
     cookie = base64.urlsafe_b64encode(payload+signature).decode().rstrip("=")
     assert get_icon(first, cookie=cookie)[0] == 304
     wait(lambda: "304|-|"+signature.hex() in open("/tmp/icon-access.log").read(), "direct 304 and session identity")
+    for invalid in ["bad", cookie + "=", "!" * 87,
+                    base64.urlsafe_b64encode(payload[:9] + bytes(8) + payload[17:] + signature).decode().rstrip("=")]:
+        before_lines = len(open("/tmp/icon-access.log").read().splitlines())
+        assert get_icon(first, cookie=invalid)[0] == 304
+        wait(lambda: len(open("/tmp/icon-access.log").read().splitlines()) > before_lines,
+             "invalid session request logged")
+        assert open("/tmp/icon-access.log").read().splitlines()[-1] == "304|-|"
+    conn = http.client.HTTPConnection("127.0.0.1", 8081, timeout=3)
+    for _ in range(3):
+        conn.request("GET", "/api/user/alpha%20/icon", headers={"If-None-Match": first})
+        response = conn.getresponse()
+        assert response.status == 304 and response.getheader("ETag") == first
+        assert response.read() == b""
+    conn.close()
     assert get_icon()[0] == 200
     assert get_icon('"' + '0'*64 + '"')[0] == 200
     assert get_icon(first, "missing")[0] == 404
     assert get_icon("W/"+first)[0] == 304
-    print("PASS direct 304, image, unknown user, special ETag, session identity", flush=True)
+    print("PASS native 304, image, unknown user, special ETag, session validation and keepalive", flush=True)
 
     retry = publication([dict(name="alpha", hash=first_hash)])
     publish(retry)

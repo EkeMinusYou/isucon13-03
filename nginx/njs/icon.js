@@ -85,41 +85,4 @@ function publish(r) {
     }
 }
 
-function measurementID(r) {
-    // Public GET logging only; authenticated APIs still verify the signature in Go.
-    const value = r.variables.cookie_SESSIONID;
-    if (!value || value.length !== 87 || !/^[A-Za-z0-9_-]+$/.test(value)) return '';
-    const token = Buffer.from(value, 'base64url');
-    if (token.length !== 65 || token[0] !== 1) return '';
-    const expires = token.readUIntBE(11, 6);
-    if (Math.floor(Date.now() / 1000) > expires || (token[1] & 128)) return '';
-    return token.subarray(33).toString('hex');
-}
-
-function serve(r) {
-    try {
-        if (r.method === 'GET') {
-            const header = r.headersIn['If-None-Match'];
-            if (header && /^"[0-9a-f]{64}"$/.test(header)) {
-                const before = ngx.shared.icon_control.get('active');
-                if (before) {
-                    const name = r.variables.icon_username.replace(/ +$/, '');
-                    const hash = ngx.shared.icon_hashes.get(name);
-                    const after = ngx.shared.icon_control.get('active');
-                    if (before === after && Date.now() < Number(before.slice(37)) &&
-                        header === '"' + hash + '"') {
-                        r.variables.icon_session_id = measurementID(r);
-                        r.headersOut['ETag'] = header;
-                        r.return(304);
-                        return;
-                    }
-                }
-            }
-        }
-    } catch (_) {
-        // An unavailable dictionary or unsupported validator uses the Go handler.
-    }
-    r.internalRedirect('@icon_reader');
-}
-
-export default {serve, status, publish};
+export default {status, publish};

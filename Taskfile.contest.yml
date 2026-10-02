@@ -144,11 +144,12 @@ tasks:
   build-icon-edge-module:
     desc: 現行nginx用njs moduleをローカルLinux/amd64 Dockerでビルドする
     deps: [setup-icon-edge-sources]
-    sources: [tools/contest/nginx-njs/Containerfile, tools/contest/nginx-njs/sources.sha256, tools/contest/nginx-njs/nginx-1.18-compat.patch]
+    sources: [tools/contest/nginx-njs/Containerfile, tools/contest/nginx-njs/sources.sha256, tools/contest/nginx-njs/nginx-1.18-compat.patch, tools/contest/nginx-njs/icon-native.patch, tools/contest/nginx-njs/isupipe_icon_native.inc, tools/contest/nginx-njs/isupipe_icon_dict.inc]
     generates: [.task/icon-edge/build/ngx_http_js_module.so]
     cmds:
       - mkdir -p .task/icon-edge/docker
       - cp tools/contest/nginx-njs/nginx-1.18-compat.patch .task/icon-edge/sources/
+      - cp tools/contest/nginx-njs/icon-native.patch tools/contest/nginx-njs/isupipe_icon_native.inc tools/contest/nginx-njs/isupipe_icon_dict.inc .task/icon-edge/sources/
       - DOCKER_CONFIG='{{.ROOT_DIR}}/.task/icon-edge/docker' docker build --platform linux/amd64 -f tools/contest/nginx-njs/Containerfile -t isucon-icon-edge:local .task/icon-edge/sources
       - mkdir -p .task/icon-edge/build
       - docker run --rm --platform linux/amd64 -v '{{.ROOT_DIR}}/.task/icon-edge/build:/output' isucon-icon-edge:local sh -c 'cp /build/nginx-1.18.0/objs/ngx_http_js_module.so /output/; sha256sum /output/ngx_http_js_module.so'
@@ -158,6 +159,36 @@ tasks:
     deps: [build, build-icon-edge-module]
     cmds:
       - docker run --rm --platform linux/amd64 -v '{{.ROOT_DIR}}/nginx/njs:/etc/nginx/njs:ro' -v '{{.ROOT_DIR}}/tools/contest/nginx-njs:/checks:ro' -v '{{.ROOT_DIR}}/{{.APP_DIR}}/{{.APP_NAME}}:/app/isupipe:ro' isucon-icon-edge:local python3 /checks/check.py
+
+  check-viewer-latency-local:
+    desc: 閲覧JSONのgzipとネイティブ304の正当性を確認する（競技ベンチなし）
+    cmds:
+      - cd '{{.APP_DIR}}' && go test -race ./... -run 'Test(ResponseJSON|TimelineGzip)'
+      - task: check-icon-edge-local
+
+  deploy-viewer-latency-dry:
+    desc: Goのgzipと両nginxのネイティブ304の配布・再起動対象を表示する
+    deps: [gen, build-deployctl]
+    cmds:
+      - '{{.DEPLOYCTL_DIR}}/deployctl apply app -dry-run -config {{.DEPLOYCTL_CONFIG}} {{.DEPLOYCTL_COMMON}}'
+      - '{{.DEPLOYCTL_DIR}}/deployctl apply icon-edge-module -dry-run -config {{.DEPLOYCTL_CONFIG}} {{.DEPLOYCTL_COMMON}}'
+      - '{{.DEPLOYCTL_DIR}}/deployctl apply-plan viewer-latency -dry-run -config {{.DEPLOYCTL_CONFIG}} {{.DEPLOYCTL_COMMON}}'
+
+  deploy-viewer-latency:
+    desc: 3号機のGoと1・2号機のネイティブ304 module・設定を配布して再起動する
+    preconditions:
+      - sh: test ! -f '{{.RUN_STATE_FILE}}'
+        msg: active benchmark exists
+    cmds:
+      - task: inspect-fast-paths
+      - task: build-icon-edge-module
+      - task: deploy-app
+      - '{{.DEPLOYCTL_DIR}}/deployctl apply icon-edge-module -config {{.DEPLOYCTL_CONFIG}} {{.DEPLOYCTL_COMMON}}'
+      - task: deploy-plan
+        vars: { PLAN: viewer-latency }
+      - task: check-icon-edge
+      - task: check-app-deployment
+        vars: { ICON_EDGE_CHECK: 'true' }
 
   deploy-icon-edge:
     desc: 1号機nginx・icon readerと3号機通知先を配布し更新・初期化・再起動を確認する

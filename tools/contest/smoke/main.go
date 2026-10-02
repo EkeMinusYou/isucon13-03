@@ -92,6 +92,10 @@ func main() {
 			}
 		}
 		fmt.Printf("%s: login and eight authenticated reads passed\n", addr)
+		if err := checkTimelineGzip(client); err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("%s: timeline gzip negotiation and decoded JSON passed\n", addr)
 		if *mutationsPhase != "" {
 			if err := checkMutationPersistence(client, *mutationsPhase == "write"); err != nil {
 				log.Fatal(err)

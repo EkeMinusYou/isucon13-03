@@ -5,11 +5,14 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
 WORKDIR /build
 COPY nginx-1.18.0.tar.gz njs-0.8.9.tar.gz ./
 COPY nginx-1.18-compat.patch ./
+COPY icon-native.patch isupipe_icon_native.inc isupipe_icon_dict.inc ./
 RUN printf '%s\n' \
     '4c373e7ab5bf91d34a4f11a0c9496561061ba5eee6020db272a17a7228d35f99  nginx-1.18.0.tar.gz' \
     '918accac7ec252baac1146e49fdc0f5c101c66ef3b9ceba7ce1b59be704acebf  njs-0.8.9.tar.gz' | sha256sum -c - \
     && tar xzf nginx-1.18.0.tar.gz && tar xzf njs-0.8.9.tar.gz \
-    && cd njs-0.8.9 && patch -p1 < /build/nginx-1.18-compat.patch && cd .. \
+    && cd njs-0.8.9 && patch -p1 < /build/nginx-1.18-compat.patch \
+    && patch -p1 < /build/icon-native.patch \
+    && cp /build/isupipe_icon_native.inc /build/isupipe_icon_dict.inc nginx/ && cd .. \
     && cd nginx-1.18.0 \
     && ./configure --with-compat --with-debug --with-http_ssl_module --with-http_v2_module \
        --with-threads --with-pcre-jit --add-dynamic-module=../njs-0.8.9/nginx \

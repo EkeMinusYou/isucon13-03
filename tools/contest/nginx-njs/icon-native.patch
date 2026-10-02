@@ -1,0 +1,76 @@
+--- a/nginx/ngx_http_js_module.c
++++ b/nginx/ngx_http_js_module.c
+@@ -14,6 +14,12 @@
+ 
+ typedef struct {
+     NGX_JS_COMMON_LOC_CONF;
++
++    ngx_js_dict_t         *icon_hashes;
++    ngx_js_dict_t         *icon_control;
++    ngx_int_t              icon_username_index;
++    ngx_int_t              icon_session_index;
++    ngx_int_t              icon_cookie_index;
+ 
+     ngx_str_t              content;
+     ngx_str_t              header_filter;
+@@ -109,6 +115,9 @@
+ } ngx_http_js_entry_t;
+ 
+ 
++static ngx_int_t ngx_http_isupipe_icon_handler(ngx_http_request_t *r);
++static char *ngx_http_isupipe_icon_native(ngx_conf_t *cf, ngx_command_t *cmd,
++    void *conf);
+ static ngx_int_t ngx_http_js_content_handler(ngx_http_request_t *r);
+ static void ngx_http_js_content_event_handler(ngx_http_request_t *r);
+ static void ngx_http_js_content_write_event_handler(ngx_http_request_t *r);
+@@ -421,6 +430,13 @@
+ 
+ static ngx_command_t  ngx_http_js_commands[] = {
+ 
++    { ngx_string("isupipe_icon_native"),
++      NGX_HTTP_LOC_CONF|NGX_CONF_TAKE2,
++      ngx_http_isupipe_icon_native,
++      NGX_HTTP_LOC_CONF_OFFSET,
++      0,
++      NULL },
++
+     { ngx_string("js_engine"),
+       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+       ngx_js_engine,
+@@ -7887,7 +7903,7 @@
+     ngx_str_t                 *value;
+     ngx_http_core_loc_conf_t  *clcf;
+ 
+-    if (jlcf->content.data) {
++    if (jlcf->content.data || jlcf->icon_hashes != NULL) {
+         return "is duplicate";
+     }
+ 
+@@ -8063,3 +8079,6 @@
+ 
+     return NGX_OK;
+ }
++
++
++#include "isupipe_icon_native.inc"
+--- a/nginx/ngx_js_shared_dict.c
++++ b/nginx/ngx_js_shared_dict.c
+@@ -3098,3 +3098,6 @@
+ }
+ 
+ #endif
++
++
++#include "isupipe_icon_dict.inc"
+--- a/nginx/ngx_js.h
++++ b/nginx/ngx_js.h
+@@ -427,4 +427,9 @@
+ extern njs_module_t  njs_zlib_module;
+ 
+ 
++/* Contest icon reads bypass the JavaScript VM. */
++ngx_js_dict_t *ngx_isupipe_icon_dict_find(ngx_js_dict_t *dicts, ngx_str_t *name);
++ngx_int_t ngx_isupipe_icon_etag_matches(ngx_js_dict_t *hashes,
++    ngx_js_dict_t *control, ngx_str_t *name, ngx_str_t *etag);
++
+ #endif /* _NGX_JS_H_INCLUDED_ */

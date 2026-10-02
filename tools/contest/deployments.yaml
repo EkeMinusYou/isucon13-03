@@ -92,6 +92,27 @@ deployments:
     uploads: [*ingress_nginx_config, *ingress_public_assets]
     activations: *ingress_nginx_activation
 
+  native-icon-nginx:
+    # The Taskfile installs and verifies the module before validated config upload.
+    uploads: [*ingress_nginx_config]
+    activations:
+      - label: restart nginx to load the replacement native module
+        role: nginx
+        script: |
+          set -eu
+          sudo nginx -t
+          sudo systemctl restart nginx
+          sudo systemctl is-active --quiet nginx
+          curl --fail --silent --show-error --max-time 10 --cacert /etc/nginx/tls/_.u.isucon.dev.crt --resolve pipe.u.isucon.dev:443:127.0.0.1 https://pipe.u.isucon.dev/api/tag >/dev/null
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --max-time 2 http://127.0.0.1:8055/status | python3 -c 'import json,sys; s=json.load(sys.stdin); assert s["fresh"] and not s["dirty"] and s["users"] > 0'; then
+              exit 0
+            fi
+            sleep 0.1
+          done
+          echo 'Native icon dictionaries did not become ready' >&2
+          exit 1
+
   nginx-retire:
     activations:
       - label: stop nginx on the application host after DNS switches
@@ -265,6 +286,10 @@ deployments:
           esac
 
 plans:
+  viewer-latency:
+    deployments:
+      native-icon-nginx: {}
+
   shared-wal:
     deployments:
       shared-wal-stop: {}
