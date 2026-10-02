@@ -51,6 +51,10 @@ type postRecord struct {
 
 func (r postRecord) cost() int64 {
 	switch r.Kind {
+	case "moderate":
+		// Include the per-author cached JSON, whose escaping can expand a byte
+		// to six bytes, as well as the stored NG word and map entry.
+		return int64(512 + 7*len(r.Text))
 	case "exit":
 		return 0
 	case "icon":
@@ -452,7 +456,11 @@ type postBatch struct {
 	requests []postRequest
 	records  []postRecord
 	end      int64
+	queuedAt time.Time
 }
+
+const postSyncCollectDelay = 200 * time.Microsecond
+const postSyncCollectRecords = 8
 
 func (s *postStore) writePosts() {
 	defer s.writers.Done()
@@ -467,7 +475,7 @@ func (s *postStore) writePosts() {
 	for posts != nil || icons != nil || len(active) > 0 {
 		batch := make([]postRequest, 0, 64)
 		// Rotate image jobs in 64 KiB units. Every round also drains ready posts.
-		// No timer or collection delay is inserted into the commit path.
+		// The sync worker bounds collection by the oldest frame's age.
 		if len(active) == 0 && len(posts) == 0 {
 			select {
 			case r, ok := <-posts:
@@ -577,7 +585,7 @@ func (s *postStore) appendPostBatch(batch []postRequest) {
 		if err == nil {
 			s.writtenBytes += int64(len(frame))
 			s.writtenSeq = seq
-			s.pending = append(s.pending, postBatch{requests: batch, records: records, end: s.writtenBytes})
+			s.pending = append(s.pending, postBatch{requests: batch, records: records, end: s.writtenBytes, queuedAt: time.Now()})
 		}
 		s.walMu.Unlock()
 		if err != nil {
@@ -600,14 +608,45 @@ func (s *postStore) appendPostBatch(batch []postRequest) {
 	}
 }
 
-// Capture complete frames immediately. Appends made during Sync accumulate
-// for the next group and cannot be acknowledged by the current boundary.
+// Capture only complete frames. Appends made during Sync accumulate for the
+// next group and cannot be acknowledged by the current boundary.
 func (s *postStore) takePostBatches() []postBatch {
 	s.walMu.Lock()
 	defer s.walMu.Unlock()
 	batches := s.pending
 	s.pending = nil
 	return batches
+}
+
+func (s *postStore) collectPostBatches(batches []postBatch) ([]postBatch, bool) {
+	count := 0
+	for _, batch := range batches {
+		count += len(batch.records)
+	}
+	// An isolated request needs no added wait. A backlog older than the budget
+	// also syncs immediately, so repeated notifications cannot extend its age.
+	wait := time.Until(batches[0].queuedAt.Add(postSyncCollectDelay))
+	if count >= postSyncCollectRecords || len(s.slots) <= 1 || wait <= 0 {
+		return batches, false
+	}
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	for count < postSyncCollectRecords {
+		select {
+		case _, ok := <-s.syncWake:
+			more := s.takePostBatches()
+			for _, batch := range more {
+				count += len(batch.records)
+			}
+			batches = append(batches, more...)
+			if !ok {
+				return batches, true
+			}
+		case <-timer.C:
+			return append(batches, s.takePostBatches()...), false
+		}
+	}
+	return batches, false
 }
 
 func (s *postStore) syncPosts() {
@@ -621,6 +660,9 @@ func (s *postStore) syncPosts() {
 			_, ok := <-s.syncWake
 			closing = !ok
 			continue
+		}
+		if !closing {
+			batches, closing = s.collectPostBatches(batches)
 		}
 		s.syncPostBatches(batches)
 	}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -89,6 +90,9 @@ func (s *postStore) publishRecords(records []postRecord, reserve bool) error {
 		state.rowsMu.Lock()
 		switch r.Kind {
 		case "comment":
+			if r.Seq == 0 {
+				state.ngCleanOwner = 0
+			}
 			row := r.comment()
 			if _, exists := s.commentsByID[row.ID]; exists {
 				state.rowsMu.Unlock()
@@ -130,6 +134,16 @@ func (s *postStore) publishRecords(records []postRecord, reserve bool) error {
 			u.emojis[key]++
 		case "moderate":
 			state.words = append(state.words, NGWord{ID: r.ID, UserID: r.UserID, LivestreamID: r.StreamID, Word: r.Text, CreatedAt: r.CreatedAt})
+			if state.ngJSON == nil {
+				state.ngJSON = make(map[int64]string)
+			}
+			encoded, _ := json.Marshal(r.Text)
+			previous := state.ngJSON[r.UserID]
+			if previous == "" {
+				state.ngJSON[r.UserID] = "[" + string(encoded) + "]"
+			} else {
+				state.ngJSON[r.UserID] = previous[:len(previous)-1] + "," + string(encoded) + "]"
+			}
 			deleted := make(map[int64]bool, len(r.Deleted))
 			for _, id := range r.Deleted {
 				row, exists := s.commentsByID[id]
@@ -170,6 +184,13 @@ func (s *postStore) publishRecords(records []postRecord, reserve bool) error {
 						first = false
 					}
 				}
+			}
+			// SQL seed rows (Seq == 0) were not filtered. WAL moderation records
+			// were prepared under the stream gate, including records from before
+			// this optimization. Replay can therefore restore the same invariant.
+			state.ngCleanOwner = 0
+			if r.Seq > 0 && owner != 0 && r.UserID == owner && len(state.ngJSON) == 1 {
+				state.ngCleanOwner = owner
 			}
 		case "report":
 			if r.Report == nil {

@@ -201,6 +201,45 @@ func TestPostSyncFailureAndGrouping(t *testing.T) {
 	})
 }
 
+func TestPostCollectionShutdownAndFailure(t *testing.T) {
+	s := writerTestStore(t)
+	s.writtenBytes = s.durableBytes.Load()
+	s.syncWake = make(chan struct{}, 1)
+	// Model two competing submissions to exercise the collection path.
+	s.slots <- struct{}{}
+	s.slots <- struct{}{}
+	first := postRequest{record: postRecord{Kind: "reaction", StreamID: 1, Text: "first"}, done: make(chan postResult, 1)}
+	second := postRequest{record: postRecord{Kind: "reaction", StreamID: 2, Text: "second"}, done: make(chan postResult, 1)}
+	s.appendPostBatch([]postRequest{first})
+	batches := s.takePostBatches()
+	s.appendPostBatch([]postRequest{second})
+	close(s.syncWake)
+	// Keep the collection deadline in the future without relying on scheduling
+	// sub-millisecond writes in the test. Closure must drain it immediately.
+	batches[0].queuedAt = time.Now().Add(time.Second)
+	groups, closed := s.collectPostBatches(batches)
+	if !closed || len(groups) != 2 || s.durableSeq.Load() != 0 {
+		t.Fatalf("shutdown did not collect complete frames: groups=%d closed=%t", len(groups), closed)
+	}
+	for _, r := range []postRequest{first, second} {
+		select {
+		case result := <-r.done:
+			t.Fatalf("collection acknowledged a frame without Sync: %+v", result)
+		default:
+		}
+	}
+	s.syncFile = func() error { return errors.New("injected grouped Sync failure") }
+	s.syncPostBatches(groups)
+	for _, r := range []postRequest{first, second} {
+		if result := <-r.done; result.err == nil {
+			t.Fatal("grouped Sync failure acknowledged a frame")
+		}
+	}
+	if s.durableSeq.Load() != 0 || s.records.Load() != 0 {
+		t.Fatal("failed grouped Sync published records")
+	}
+}
+
 func TestPostAppendOverlapsSyncWithoutEarlyAcknowledgement(t *testing.T) {
 	s := writerTestStore(t)
 	started := make(chan int, 2)

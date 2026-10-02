@@ -24,8 +24,11 @@ type postStream struct {
 	comments  []LivecommentModel
 	reactions []ReactionModel
 	words     []NGWord
-	reports   []LivecommentReportModel
-	viewers   map[int64]int64
+	ngJSON    map[int64]string
+	// A durable moderation has checked all rows against this owner's words.
+	ngCleanOwner int64
+	reports      []LivecommentReportModel
+	viewers      map[int64]int64
 }
 
 func (s *postStream) acquire(ctx context.Context) error {

@@ -70,14 +70,9 @@ func (s *postStore) submit(ctx context.Context, stream int64, op mutationOperati
 			return fmt.Errorf("comment exceeds VARCHAR(255)")
 		}
 		state.rowsMu.RLock()
-		var words []string
-		for _, word := range state.words {
-			if word.UserID == op.ownerID {
-				words = append(words, word.Word)
-			}
-		}
+		wordsJSON := state.ngJSON[op.ownerID]
 		state.rowsMu.RUnlock()
-		spam, err := s.matchesNG(ctx, m.Comment, words)
+		spam, err := s.matchesNG(ctx, m.Comment, wordsJSON)
 		if err != nil {
 			return err
 		}

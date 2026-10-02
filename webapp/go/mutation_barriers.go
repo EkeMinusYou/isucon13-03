@@ -34,16 +34,12 @@ func (*viewerMutation) mutationOperation() {}
 
 // MySQL evaluates only parameter values, preserving LIKE and collation semantics
 // without reading a lagging projection or performing a durable database write.
-func (s *postStore) matchesNG(ctx context.Context, text string, words []string) (bool, error) {
-	if len(words) == 0 {
+func (s *postStore) matchesNG(ctx context.Context, text, wordsJSON string) (bool, error) {
+	if wordsJSON == "" {
 		return false, nil
 	}
-	payload, err := json.Marshal(words)
-	if err != nil {
-		return false, err
-	}
 	var hit bool
-	err = s.db.GetContext(ctx, &hit, `SELECT EXISTS(SELECT 1 FROM JSON_TABLE(?, '$[*]' COLUMNS(word VARCHAR(255) CHARACTER SET utf8mb4 PATH '$')) AS w WHERE CONVERT(? USING utf8mb4) COLLATE utf8mb4_general_ci LIKE CONCAT('%', w.word COLLATE utf8mb4_general_ci, '%'))`, string(payload), text)
+	err := s.db.GetContext(ctx, &hit, `SELECT EXISTS(SELECT 1 FROM JSON_TABLE(?, '$[*]' COLUMNS(word VARCHAR(255) CHARACTER SET utf8mb4 PATH '$')) AS w WHERE CONVERT(? USING utf8mb4) COLLATE utf8mb4_general_ci LIKE CONCAT('%', w.word COLLATE utf8mb4_general_ci, '%'))`, wordsJSON, text)
 	return hit, err
 }
 func (s *postStore) prepareModeration(ctx context.Context, state *postStream, op *moderationMutation) (postRecord, error) {
@@ -51,11 +47,16 @@ func (s *postStore) prepareModeration(ctx context.Context, state *postStream, op
 		return postRecord{}, echo.NewHTTPError(http.StatusInternalServerError, "NG word exceeds VARCHAR(255)")
 	}
 	state.rowsMu.RLock()
-	words := make([]string, 0, len(state.words)+1)
-	for _, word := range state.words {
-		words = append(words, word.Word)
+	words := []string{op.word}
+	// Initial SQL rows have no cleanliness guarantee. Foreign authors' words
+	// also require full scans because new comments only check the owner's words.
+	if state.ngCleanOwner == 0 || state.ngCleanOwner != op.userID {
+		words = make([]string, 0, len(state.words)+1)
+		for _, word := range state.words {
+			words = append(words, word.Word)
+		}
+		words = append(words, op.word)
 	}
-	words = append(words, op.word)
 	type candidate struct {
 		ID   int64  `json:"id"`
 		Text string `json:"text"`

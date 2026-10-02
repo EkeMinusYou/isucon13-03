@@ -277,6 +277,7 @@ UPDATE livecomment_reports SET comment_created_at=livecomment_id;`); err != nil 
 			}
 		})
 	}
+	t.Run("incremental_moderation", func(t *testing.T) { checkIncrementalModeration(t, db, e, store) })
 	t.Run("durable_posts", func(t *testing.T) { checkDurablePosts(t, db, e, store) })
 
 }
