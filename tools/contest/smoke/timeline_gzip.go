@@ -32,6 +32,11 @@ func checkTimelineGzip(client *http.Client) error {
 				return err
 			}
 			if compressed {
+				for _, query := range []string{"limit=64", "limit=64&pretty", "limit=0"} {
+					if _, err := checkJSONGzip(client, fmt.Sprintf("/api/livestream/%d/%s?%s", stream.ID, route, query)); err != nil {
+						return err
+					}
+				}
 				break
 			}
 		}
@@ -58,7 +63,18 @@ func checkJSONGzip(client *http.Client, path string) (bool, error) {
 		if err != nil || !bytes.Equal(decoded, plain) {
 			return false, fmt.Errorf("%s: gzip changed the JSON response: %v", path, err)
 		}
-		fmt.Printf("%s body %d -> %d bytes\n", path, len(plain), len(encoded))
+		var legacy bytes.Buffer
+		writer, err := gzip.NewWriterLevel(&legacy, gzip.BestSpeed)
+		if err != nil {
+			return false, err
+		}
+		if _, err := writer.Write(plain); err != nil {
+			return false, err
+		}
+		if err := writer.Close(); err != nil {
+			return false, err
+		}
+		fmt.Printf("%s body %d -> %d bytes; whole-response gzip %d bytes (ratio %.3f)\n", path, len(plain), len(encoded), legacy.Len(), float64(len(encoded))/float64(legacy.Len()))
 		return true, nil
 	}
 	if len(plain) >= 1024 || !bytes.Equal(encoded, plain) {

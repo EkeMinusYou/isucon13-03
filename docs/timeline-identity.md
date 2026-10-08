@@ -31,3 +31,23 @@
 
 ベンチは実行していない。比較基準はgzip有効時のRUN `20261009-060012`、618605点。
 次のRUNでスコア・対象APIの時間・送信量・nginxとアプリのCPUを同一負荷窓で比較する。
+
+## 比較結果とgzipの復元
+
+RUN `20261009-062656`は605677点で、gzip有効時の618605点から12928点（2.09%）低下した。
+対象GETの平均応答時間とアプリCPUは改善したが、対象GETの総転送量は約16倍になった。
+各条件1回の比較で因果は確定できない。ユーザーの指示によりgzip有効へ戻し、
+`task deploy-app`でisucon-3へ反映した。
+
+- `task check-fast-paths`のGo race検証とcollector検証が成功。
+- `task check-app-deployment`で稼働バイナリ一致と両入口の認証APIを確認。
+  gzipの展開結果はidentityと一致し、コメントは17960→1788 bytes、
+  リアクションは17146→1085 bytes。検索もgzipを維持。
+- 再起動前後でWAL世代`cbd0bb15-56d9-413e-867a-bc47f227db5f`、rows=102104、
+  durable_seq=published_seq=92222、wal_bytes=30031745が一致。
+  pending_bytes=0、failed=false。
+
+アプリSHA256: `030d193d67c83dd99783a50a0694ea9061417ad59c8741eaffba06b86e33a8a7`。
+ログ: `.task/timeline-gzip-restore-{prereqs,local,deploy-plan,deploy,smoke,before,after}.log`。
+復元作業ではベンチを実行していない。その後、ユーザー実行のRUN
+`20261009-063406`はpassed=true、617052点だった。

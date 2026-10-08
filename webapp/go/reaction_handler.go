@@ -1,13 +1,11 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
 	"time"
 
-	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v4"
 )
 
@@ -88,7 +86,11 @@ func postReactionHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "failed to decode request")
 	}
 	model := ReactionModel{UserID: userID, LivestreamID: livestreamID, EmojiName: req.EmojiName, CreatedAt: time.Now().Unix()}
-	response, err := fillReactionResponse(ctx, nil, model)
+	response := newResponseJSONBuilder(ctx)
+	_, err = response.user(userID)
+	if err == nil {
+		_, err = response.streamReference(livestreamID)
+	}
 	if err != nil {
 		return mutationHTTPError(err)
 	}
@@ -96,15 +98,11 @@ func postReactionHandler(c echo.Context) error {
 	if err != nil {
 		return mutationHTTPError(err)
 	}
-	response.ID = model.ID
-	refreshResponseIcons(&response.User, &response.Livestream.Owner)
-	return c.JSON(http.StatusCreated, response)
-}
-
-func fillReactionResponse(ctx context.Context, tx *sqlx.Tx, model ReactionModel) (Reaction, error) {
-	responses, err := fillReactionResponses(ctx, tx, []ReactionModel{model})
+	clear(response.users)
+	clear(response.streams)
+	data, err := response.reactionJSON(model)
 	if err != nil {
-		return Reaction{}, err
+		return mutationHTTPError(err)
 	}
-	return responses[0], nil
+	return writeCreatedResponseJSON(c, data)
 }

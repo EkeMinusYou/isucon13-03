@@ -46,14 +46,17 @@ type livestreamReference struct {
 }
 
 type referenceStore struct {
-	users       sync.Map // int64 -> *userReference
-	livestreams sync.Map // int64 -> *livestreamReference
-	indexMu     sync.RWMutex
-	allStreams  []*LivestreamModel
-	byUser      map[int64][]*LivestreamModel
-	byTag       map[int64][]*LivestreamModel
-	rowJSON     [16]boundedCache[rowJSONKey, []byte]
-	listJSON    [16]boundedCache[listResponseKey, *completedListResponse]
+	users        sync.Map // int64 -> *userReference
+	livestreams  sync.Map // int64 -> *livestreamReference
+	indexMu      sync.RWMutex
+	allStreams   []*LivestreamModel
+	byUser       map[int64][]*LivestreamModel
+	byTag        map[int64][]*LivestreamModel
+	rowJSON      [16]boundedCache[rowJSONKey, []byte]
+	listJSON     [16]boundedCache[listResponseKey, *completedListResponse]
+	timelineGzip [16]boundedCache[[32]byte, []byte]
+
+	timelineGzipHitBytes, timelineGzipMissBytes atomic.Uint64
 }
 
 var currentReferences atomic.Pointer[referenceStore]

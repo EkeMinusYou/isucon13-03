@@ -1,0 +1,68 @@
+# 投稿JSONとtimeline gzipの再利用
+
+2026-10-09、ユーザーの指示により①POST応答のJSON再利用と
+②timeline gzipのグループ再利用を実装し、`task deploy-app`でisucon-3へ反映した。
+GoアプリをLinux/amd64へクロスビルドし、isupipe-goを再起動した。
+
+## ① POST応答のJSON再利用
+
+対象はコメント・リアクションの投稿API。
+既存の投稿者・配信JSONと行JSONキャッシュを使い、応答全体の再エンコードを除去した。
+書込み前に参照を解決し、書込み完了後にアイコンのスナップショットを更新して、
+確定したIDを含むJSONを返す。参照JSONを変更せず、POST応答でも行JSONを温める。
+201、非圧縮JSON、pretty、改行、エスケープ、認証、NG判定を維持する。
+
+## ② timeline gzipのグループ再利用
+
+対象はコメント・リアクションのGET。
+
+- 64行以下は応答全体を1グループとして再利用する。
+- 65行以上では、行IDから決定した区切りで32行以上のグループを作る。
+  通常は128行を上限にし、末尾32行未満は直前のグループへ取り込む。
+  先頭への追加や削除で、変更されていない内部グループを再利用できる。
+- JSONの正確なバイト列をSHA256で識別し、圧縮済みgzip memberを保持する。
+  句読点、順序、limit、行内容、投稿者・所有者のアイコン、タグ更新はすべてキーへ反映する。
+  gzip memberを連結して返し、展開したJSONは従来と一致する。
+- prettyは整形後の応答全体を再利用する。gzip除外指定、1024 bytes未満、
+  非GET、圧縮でサイズが増える応答の扱いを維持する。
+- 16分割のキャッシュへ各2MiB、合計32MiBの保持予算を設ける。
+  初期化・参照ストア再作成時に破棄し、WAL・DBへ圧縮キャッシュを永続化しない。
+
+細かいグループを使った初回の実データ確認では、リアクションのgzipサイズが
+1799→3444 bytes（1.914倍）になったため、上記の行数条件へ調整した。
+最終版では同じ確認対象が1799 bytesで、従来と一致した。
+32MiBのキャッシュ保持とSHA256・グループ結合の仕事が増える。
+大型応答では圧縮辞書がグループ間で共有されないため、転送量が増える可能性が残る。
+
+`/debug/sql-pools`へ以下を追加した。
+
+- `timeline_gzip_cache_hits_total` / `timeline_gzip_cache_misses_total`
+- `timeline_gzip_cache_budget_bytes`（実際の保持量の見積り）
+- `timeline_gzip_cache_hit_bytes_total` / `timeline_gzip_cache_miss_bytes_total`
+  （再利用した／実際に圧縮した元JSONのバイト数）
+
+## 確認結果
+
+- `task check-fast-paths`成功。Go全体のrace検証とcollector検証を実施。
+- `task check-post-group-json`成功。POSTのJSONを確定済み行のtyped応答と比較し、
+  投稿追加、削除、limit、pretty、アイコン・タグ更新、キャッシュ予算、
+  並行利用とnet/httpの自動gzip展開を確認した。
+  256～257行のfixtureでは従来gzipに対し1.087～1.126倍のサイズだった。
+  fixtureの圧縮率は負荷走行時の平均ではない。
+- `task check-app-deployment MUTATIONS_SMOKE_PHASE=write`で投稿を確認し、
+  最終版への再起動後に`MUTATIONS_SMOKE_PHASE=read`で同じ受理済みデータ、
+  モデレーション結果、reportのスナップショット、統計を確認した。
+- 両入口でgzip指定とidentity指定を比較し、展開後のJSON一致を確認した。
+  最終版の確認対象はコメントlimit=12で18053→1998 bytes、limit=64で56087→3617 bytes、
+  リアクションlimit=12で17415→1156 bytes、limit=64で46682→1799 bytes。
+  いずれも従来の応答全体gzipと同じサイズだった。検索gzipも維持。
+- 最終再起動前後でWAL世代`6ae1e8b7-938b-43e6-8161-257c6fe05c70`、
+  rows=103662、durable_seq=published_seq=93945、wal_bytes=30327320が一致。
+  pending_bytes=0、failed=false。
+
+アプリSHA256: `2373a8dff3288c341b96adb1edce75de42e175106c662b61ba8b01a6de8b54c9`。
+ログ: `.task/post-group-gzip-{prereqs,local,focused,deploy-plan,deploy-final,smoke-final,before-final,after-final}.log`。
+
+競技ベンチは実行していない。比較基準はgzip復元後のRUN `20261009-063406`、617052点。
+次のRUNで同一負荷窓のスコア、対象APIの完了数・時間・転送量、アプリとnginxのCPU、
+gzipの再利用バイト率・保持量を比較する。ヒット件数率だけで圧縮CPUの削減量を判断しない。

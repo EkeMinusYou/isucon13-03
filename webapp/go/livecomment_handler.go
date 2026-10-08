@@ -165,7 +165,11 @@ func postLivecommentHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusNotFound, "livestream not found")
 	}
 	model := LivecommentModel{UserID: userID, LivestreamID: livestreamID, Comment: req.Comment, Tip: req.Tip, CreatedAt: time.Now().Unix()}
-	response, err := fillLivecommentResponse(ctx, nil, model)
+	response := newResponseJSONBuilder(ctx)
+	_, err = response.user(userID)
+	if err == nil {
+		_, err = response.streamReference(livestreamID)
+	}
 	if err != nil {
 		return mutationHTTPError(err)
 	}
@@ -173,9 +177,15 @@ func postLivecommentHandler(c echo.Context) error {
 	if err != nil {
 		return mutationHTTPError(err)
 	}
-	response.ID = model.ID
-	refreshResponseIcons(&response.User, &response.Livestream.Owner)
-	return c.JSON(http.StatusCreated, response)
+	// Resolve fallible references before writing, then refresh icon snapshots
+	// after commit without rebuilding and encoding typed nested responses.
+	clear(response.users)
+	clear(response.streams)
+	data, err := response.commentJSON(model)
+	if err != nil {
+		return mutationHTTPError(err)
+	}
+	return writeCreatedResponseJSON(c, data)
 }
 
 func reportLivecommentHandler(c echo.Context) error {
@@ -228,14 +238,6 @@ func moderateHandler(c echo.Context) error {
 		return mutationHTTPError(err)
 	}
 	return c.JSON(http.StatusCreated, map[string]interface{}{"word_id": wordID})
-}
-
-func fillLivecommentResponse(ctx context.Context, tx *sqlx.Tx, model LivecommentModel) (Livecomment, error) {
-	responses, err := fillLivecommentResponses(ctx, tx, []LivecommentModel{model})
-	if err != nil {
-		return Livecomment{}, err
-	}
-	return responses[0], nil
 }
 
 func fillLivecommentReportResponse(ctx context.Context, tx *sqlx.Tx, model LivecommentReportModel) (LivecommentReport, error) {
