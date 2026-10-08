@@ -106,7 +106,7 @@ func getLivecommentsHandler(c echo.Context) error {
 	}
 
 	defer releaseResponseJSON(livecomments)
-	return writeResponseJSON(c, livecomments)
+	return writeCompressedResponseJSON(c, livecomments)
 }
 
 func getNgwords(c echo.Context) error {
