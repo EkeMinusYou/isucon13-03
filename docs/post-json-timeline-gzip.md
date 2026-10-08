@@ -4,6 +4,42 @@
 ②timeline gzipのグループ再利用を実装し、`task deploy-app`でisucon-3へ反映した。
 GoアプリをLinux/amd64へクロスビルドし、isupipe-goを再起動した。
 
+## ②の修正（2026-10-09）
+
+保存済みRUNの比較で、グループ再利用は圧縮CPUを減らせず、
+応答全体を読むSHA256計算の負担が増えていた。
+RUN `20261009-063406` と `20261009-064341` の60秒負荷窓では、
+アプリCPUは66.88→72.88 CPU秒、コメントGET平均は0.874→1.112 ms、
+リアクションGET平均は0.831→1.051 msだった。
+約73秒のCPUプロファイルでは、SHA256は1.51→12.69 CPU秒になった。
+計測削除後のRUN `20261009-065902` でもSHA256は11.92 CPU秒で、
+アプリCPUは73.77 CPU秒、スコアは612891点だった。
+
+ユーザーの修正指示により、②のグループ再利用を取り除き、
+コメント・リアクションGETを従来の応答全体のgzip圧縮へ戻した。
+グループ境界の計算、応答ハッシュ、32MiBのgzipキャッシュ、member連結を削除した。
+①のPOST応答JSON再利用と、既存の行JSON・配信一覧応答の再利用は維持する。
+gzip交渉、pretty、改行、非圧縮時の応答内容は従来の処理を使う。
+新しい計測は追加せず、競技ベンチは実行しない。
+
+修正版は以下を確認し、`task deploy-app`でisucon-3へ配布・再起動した。
+
+- `task check-post-json`成功。既存のPOST確定済み応答、JSON参照更新、
+  pretty、gzip交渉、並行利用のテストをrace付きで実行した。
+- `task inspect-dns-batching-prereqs`でLinux/amd64と計測停止を確認し、
+  `task deploy-app-dry`で配布先とisupipe-go再起動を確認した。
+- `task check-app-deployment`成功。稼働バイナリの一致、両HTTPS入口の認証API、
+  検索・コメント・リアクションのgzipと展開後のJSON一致を確認した。
+- 再起動前後でWAL世代`57014cdf-85e4-4090-9c21-07942a40f351`、rows=102411、
+  durable_seq=published_seq=92683、wal_bytes=30105652が一致した。
+  pending_bytes=0、failed=false。
+
+修正版アプリSHA256: `f8ede936ffa61e85962051d87a6bc25a3db08f8e25f0c0f1fd694dfe090b1dba`。
+ログは`.task/timeline-gzip-fix-{local,prereqs,deploy-plan,deploy,before,after,smoke}.log`。
+修正版の負荷時の性能・スコアは未評価。
+
+以下は最初の実装・配布時の記録。
+
 ## ① POST応答のJSON再利用
 
 対象はコメント・リアクションの投稿API。

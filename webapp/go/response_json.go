@@ -76,9 +76,7 @@ func (ref *livestreamReference) responseJSON(catalog *tagCatalog, owner User) (*
 }
 
 type responseJSONBuffer struct {
-	data      []byte
-	groupEnds []int
-	gzipStore *referenceStore
+	data []byte
 }
 
 var responseJSONBuffers = sync.Pool{New: func() any { return &responseJSONBuffer{} }}
@@ -90,11 +88,6 @@ func acquireResponseJSON() *responseJSONBuffer {
 }
 
 func releaseResponseJSON(b *responseJSONBuffer) {
-	b.gzipStore = nil
-	b.groupEnds = b.groupEnds[:0]
-	if cap(b.groupEnds) > 4096 {
-		b.groupEnds = nil
-	}
 	// Unbounded searches must not make every pooled scratch buffer retain megabytes.
 	if cap(b.data) <= 128<<10 {
 		b.data = b.data[:0]
@@ -114,9 +107,6 @@ func writeResponseJSONEncoding(c echo.Context, b *responseJSONBuffer, compress b
 	if err := formatResponseJSON(c, b); err != nil {
 		return err
 	}
-	if compress && b.gzipStore != nil {
-		return writeTimelineGzip(c, b)
-	}
 	return writeJSONEncoding(c, b.data, compress)
 }
 
@@ -128,8 +118,6 @@ func formatResponseJSON(c echo.Context, b *responseJSONBuffer) error {
 		}
 		indented.WriteByte('\n')
 		b.data = indented.Bytes()
-		// Compact group boundaries cannot be used with indented JSON.
-		b.groupEnds = b.groupEnds[:0]
 		return nil
 	}
 	b.data = append(b.data, '\n')
@@ -231,8 +219,6 @@ func livestreamResponseJSON(ctx context.Context, models []*LivestreamModel) (*re
 func livecommentResponseJSON(ctx context.Context, models []LivecommentModel) (*responseJSONBuffer, error) {
 	b := acquireResponseJSON()
 	refs := newResponseJSONBuilder(ctx)
-	b.gzipStore = refs.refs
-	groupStart := 0
 	for i, model := range models {
 		data, err := refs.commentJSON(model)
 		if err != nil {
@@ -243,10 +229,6 @@ func livecommentResponseJSON(ctx context.Context, models []LivecommentModel) (*r
 			b.data = append(b.data, ',')
 		}
 		b.data = append(b.data, data...)
-		if len(models) > 64 && len(models)-i-1 >= 32 && ((i-groupStart+1 >= 32 && timelineGroupBoundary(model.ID)) || i-groupStart+1 == 128) {
-			b.groupEnds = append(b.groupEnds, len(b.data))
-			groupStart = i + 1
-		}
 	}
 	b.data = append(b.data, ']')
 	return b, nil
@@ -255,8 +237,6 @@ func livecommentResponseJSON(ctx context.Context, models []LivecommentModel) (*r
 func reactionResponseJSON(ctx context.Context, models []ReactionModel) (*responseJSONBuffer, error) {
 	b := acquireResponseJSON()
 	refs := newResponseJSONBuilder(ctx)
-	b.gzipStore = refs.refs
-	groupStart := 0
 	for i, model := range models {
 		data, err := refs.reactionJSON(model)
 		if err != nil {
@@ -267,10 +247,6 @@ func reactionResponseJSON(ctx context.Context, models []ReactionModel) (*respons
 			b.data = append(b.data, ',')
 		}
 		b.data = append(b.data, data...)
-		if len(models) > 64 && len(models)-i-1 >= 32 && ((i-groupStart+1 >= 32 && timelineGroupBoundary(model.ID)) || i-groupStart+1 == 128) {
-			b.groupEnds = append(b.groupEnds, len(b.data))
-			groupStart = i + 1
-		}
 	}
 	b.data = append(b.data, ']')
 	return b, nil

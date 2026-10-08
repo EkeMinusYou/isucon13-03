@@ -24,14 +24,6 @@ var responseGzipPool = sync.Pool{New: func() any {
 }}
 
 func compressResponseJSON(data []byte) ([]byte, error) {
-	compressed, err := compressResponseMember(data)
-	if err != nil || len(compressed) >= len(data) {
-		return nil, err
-	}
-	return compressed, nil
-}
-
-func compressResponseMember(data []byte) ([]byte, error) {
 	state := responseGzipPool.Get().(*responseGzip)
 	state.buffer.Reset()
 	state.writer.Reset(&state.buffer)
@@ -45,6 +37,9 @@ func compressResponseMember(data []byte) ([]byte, error) {
 	}
 	if err := state.writer.Close(); err != nil {
 		return nil, err
+	}
+	if state.buffer.Len() >= len(data) {
+		return nil, nil
 	}
 	return append([]byte(nil), state.buffer.Bytes()...), nil
 }

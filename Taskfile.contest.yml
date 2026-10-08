@@ -266,10 +266,10 @@ tasks:
       - cd '{{.APP_DIR}}' && go test -race ./...
       - cd '{{.SQL_POOL_METRICS_DIR}}' && go test ./...
 
-  check-post-group-json:
-    desc: 投稿JSONとgzipグループの整合性・再利用・圧縮率をrace検証する（競技ベンチなし）
+  check-post-json:
+    desc: 投稿JSONとtimelineのJSON・gzip応答をrace検証する（競技ベンチなし）
     cmds:
-      - cd '{{.APP_DIR}}' && go test -race -v ./... -run 'Test(CreatedRowJSON|TimelineGzipGroups)'
+      - cd '{{.APP_DIR}}' && go test -race -v ./... -run 'Test(CreatedRowJSON|ResponseJSON|TimelineGzip)'
 
   inspect-fast-paths:
     desc: 配布対象・計測停止と共有セッション署名鍵の一致を確認する
