@@ -125,7 +125,7 @@ task bench-manual
 
 `Taskfile.yml`の`BENCH_HOST`と`BENCH_COMMAND`は設定済みです。次のコマンドで`isucon-bench`へ接続し、
 `isucon`ユーザーの`/home/isucon`でベンチを実行します。対象は`https://pipe.u.isucon.dev`、
-nameserverは`172.31.40.191`、webappは`54.250.213.246`・`18.177.140.41`・`13.231.248.152`です。
+nameserverは`172.31.45.106`、webappは`43.207.86.150`・`13.230.232.20`・`52.192.157.52`です。
 
 ```shell
 task bench

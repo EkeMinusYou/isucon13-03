@@ -7,7 +7,7 @@ deployments:
         role: nginx
         local: nginx/
         remote: /etc/nginx/
-        excludes: [tls/]
+        excludes: [tls/, ngx_http_js_module.so] # contest: njs module is deployed separately by icon-edge-module
         delete: true
         validate: sudo nginx -t
       - label: MySQL configuration

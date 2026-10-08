@@ -61,14 +61,14 @@ vars:
   BENCH_HOST: isucon-bench
   IP:
     map:
-      isucon-1: 172.31.40.191
-      isucon-2: 172.31.37.38
-      isucon-3: 172.31.41.146
+      isucon-1: 172.31.45.106
+      isucon-2: 172.31.40.144
+      isucon-3: 172.31.34.190
   PUBLIC_IP:
     map:
-      isucon-1: 54.250.213.246
-      isucon-2: 18.177.140.41
-      isucon-3: 13.231.248.152
+      isucon-1: 43.207.86.150
+      isucon-2: 13.230.232.20
+      isucon-3: 52.192.157.52
   ICON_READ_HOSTS: isucon-1 isucon-2
   ICON_READ_PORT: '8054'
   ICON_READ_IPS: '{{$ips := list}}{{range (splitList " " .ICON_READ_HOSTS)}}{{$ips = append $ips (index $.IP .)}}{{end}}{{join " " $ips}}'
@@ -108,8 +108,8 @@ vars:
   # >>> contest values >>>
   BENCH_TARGET: https://pipe.u.isucon.dev
   BENCH_COMMAND: >-
-    ./bench_linux_amd64 run --target {{.BENCH_TARGET}} --nameserver 172.31.40.191
-    --enable-ssl --webapp 54.250.213.246 --webapp 18.177.140.41 --webapp 13.231.248.152
+    ./bench_linux_amd64 run --target {{.BENCH_TARGET}} --nameserver 172.31.45.106
+    --enable-ssl --webapp 43.207.86.150 --webapp 13.230.232.20 --webapp 52.192.157.52
   BENCH_SSH_OPTIONS: ''
   # <<< contest values <<<
 
