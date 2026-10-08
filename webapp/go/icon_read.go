@@ -243,7 +243,7 @@ func (s *iconReplica) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
-	// Image bodies, unknown users, and expired leases use the durable owner.
+	// Image bodies, unknown users, and expired leases use the WAL owner.
 	s.proxy.ServeHTTP(w, r)
 }
 

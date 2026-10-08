@@ -61,7 +61,7 @@ func main() {
 	}
 	// Use TLS verification and the official cookie domain while dialing the
 	// concrete ingress host. No credentials or session values are printed.
-	for _, addr := range strings.Split(*targets, ",") {
+	for ingress, addr := range strings.Split(*targets, ",") {
 		client := ingressClient(addr, roots, nil)
 		if _, err := request(client, http.MethodPost, "/api/login", `{"username":"test001","password":"test"}`); err != nil {
 			log.Fatal(err)
@@ -97,10 +97,15 @@ func main() {
 		}
 		fmt.Printf("%s: search/timeline gzip negotiation and decoded JSON passed\n", addr)
 		if *mutationsPhase != "" {
-			if err := checkMutationPersistence(client, *mutationsPhase == "write"); err != nil {
+			phase := *mutationsPhase
+			// Moderation changes shared state; later ingresses verify the first write.
+			if ingress > 0 && phase == "write" {
+				phase = "read"
+			}
+			if err := checkMutationPersistence(client, phase == "write"); err != nil {
 				log.Fatal(err)
 			}
-			fmt.Printf("%s: mutation %s, all WAL events, moderation, report snapshots and statistics persistence passed\n", addr, *mutationsPhase)
+			fmt.Printf("%s: mutation %s, all WAL events, moderation, report snapshots and statistics persistence passed\n", addr, phase)
 		}
 		if *iconsPhase != "" {
 			if err := checkIcons(client, addr, *iconsPhase == "write"); err != nil {

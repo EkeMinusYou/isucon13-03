@@ -25,6 +25,7 @@ func measurementHandler(maxSeconds int) http.Handler {
 			metrics["wal_single_record_syncs_total"] = posts["single_record_syncs"]
 			metrics["wal_pending_bytes"] = posts["pending_bytes"]
 			metrics["wal_bytes"] = posts["wal_bytes"]
+			metrics["wal_published_bytes"] = posts["published_bytes"]
 			metrics["wal_durable_seq"] = posts["durable_seq"]
 			metrics["wal_published_seq"] = posts["published_seq"]
 			metrics["icon_reuses_total"] = posts["icon_reuses"]

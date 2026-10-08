@@ -20,13 +20,13 @@ type iconPart struct {
 }
 
 type walIcon struct {
-	total   int64
-	written int64
-	parts   []iconPart
-	digest  hash.Hash
-	durable bool
-	ready   chan struct{}
-	err     error
+	total    int64
+	written  int64
+	parts    []iconPart
+	digest   hash.Hash
+	complete bool
+	ready    chan struct{}
+	err      error
 }
 
 type iconWrite struct {
@@ -51,8 +51,8 @@ func (s *postStore) persistIcon(ctx context.Context, image []byte) (string, erro
 	if entry := s.icons[key]; entry != nil {
 		s.iconReuses.Add(1)
 		s.iconMu.Unlock()
-		// A pathname or written chunk is insufficient: only the shared durable
-		// completion may let another upload publish this hash in MySQL.
+		// Share completion of the entire file write before publishing this hash
+		// in MySQL; fdatasync runs independently of upload completion.
 		select {
 		case <-entry.ready:
 			return key, entry.err
@@ -75,7 +75,7 @@ func (s *postStore) persistIcon(ctx context.Context, image []byte) (string, erro
 	var err error
 	select {
 	case s.iconRequests <- job:
-		// Accepted data remains owned by the request until its last durable chunk.
+		// Accepted data remains owned by the request until its last written chunk.
 		err = (<-job.done).err
 	case <-ctx.Done():
 		err = ctx.Err()
@@ -103,7 +103,7 @@ func (s *postStore) publishIconChunk(r postRecord) error {
 		s.icons = make(map[string]*walIcon)
 	}
 	entry := s.icons[r.IconHash]
-	if entry != nil && !entry.durable && entry.written > 0 && r.IconStart == 0 {
+	if entry != nil && !entry.complete && entry.written > 0 && r.IconStart == 0 {
 		entry = nil
 	}
 	if entry == nil {
@@ -113,7 +113,7 @@ func (s *postStore) publishIconChunk(r postRecord) error {
 		entry = &walIcon{total: r.IconTotal, digest: sha256.New(), ready: make(chan struct{})}
 		s.icons[r.IconHash] = entry
 	}
-	if entry.durable || entry.total != r.IconTotal || entry.written != r.IconStart || len(r.iconData) != r.IconSize {
+	if entry.complete || entry.total != r.IconTotal || entry.written != r.IconStart || len(r.iconData) != r.IconSize {
 		return fmt.Errorf("invalid icon WAL chunk ordering")
 	}
 	if _, err := entry.digest.Write(r.iconData); err != nil {
@@ -125,7 +125,7 @@ func (s *postStore) publishIconChunk(r postRecord) error {
 		if hex.EncodeToString(entry.digest.Sum(nil)) != r.IconHash {
 			return fmt.Errorf("icon WAL hash mismatch")
 		}
-		entry.durable = true
+		entry.complete = true
 		entry.digest = nil
 	}
 	return nil
@@ -133,7 +133,7 @@ func (s *postStore) publishIconChunk(r postRecord) error {
 
 func (s *postStore) discardIncompleteIcons() {
 	for key, entry := range s.icons {
-		if !entry.durable {
+		if !entry.complete {
 			delete(s.icons, key)
 		} else {
 			close(entry.ready)
@@ -147,9 +147,9 @@ func (s *postStore) iconReader(key string) (io.Reader, error) {
 	}
 	s.iconMu.Lock()
 	entry := s.icons[key]
-	if entry == nil || !entry.durable {
+	if entry == nil || !entry.complete {
 		s.iconMu.Unlock()
-		return nil, fmt.Errorf("missing durable icon %s", key)
+		return nil, fmt.Errorf("missing complete icon %s", key)
 	}
 	parts := entry.parts
 	s.iconMu.Unlock()
@@ -163,5 +163,5 @@ func (s *postStore) iconReader(key string) (io.Reader, error) {
 func (s *postStore) hasIcon(key string) bool {
 	s.iconMu.Lock()
 	defer s.iconMu.Unlock()
-	return s.icons[key] != nil && s.icons[key].durable
+	return s.icons[key] != nil && s.icons[key].complete
 }

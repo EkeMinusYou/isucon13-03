@@ -25,7 +25,7 @@ type postStream struct {
 	reactions []ReactionModel
 	words     []NGWord
 	ngJSON    map[int64]string
-	// A durable moderation has checked all rows against this owner's words.
+	// A published moderation has checked all rows against this owner's words.
 	ngCleanOwner int64
 	reports      []LivecommentReportModel
 	viewers      map[int64]int64
@@ -62,7 +62,7 @@ type postStore struct {
 	singleRecordSyncs            atomic.Uint64
 	nextComment, nextReaction    int64
 	walMu                        sync.Mutex
-	pending                      []postBatch
+	pending                      postSyncBoundary
 	syncWake                     chan struct{}
 	writtenSeq                   uint64
 	writtenBytes                 int64
@@ -191,7 +191,7 @@ func (s *postStore) metrics() map[string]any {
 	s.walMu.Lock()
 	pending := s.writtenBytes - s.durableBytes.Load()
 	s.walMu.Unlock()
-	return map[string]any{"generation": s.generation, "durable_seq": s.durableSeq.Load(), "published_seq": s.publishedSeq.Load(), "wal_bytes": s.durableBytes.Load(), "pending_bytes": pending, "rows": rows, "model_budget_bytes": memory, "records": s.records.Load(), "syncs": s.syncs.Load(), "sync_ns": s.syncNanos.Load(), "single_record_syncs": s.singleRecordSyncs.Load(), "failed": failed, "icon_reuses": s.iconReuses.Load(), "icon_uploads": s.iconUploads.Load(), "icon_bytes": s.iconBytes.Load(), "icon_chunks": s.iconChunks.Load()}
+	return map[string]any{"generation": s.generation, "durable_seq": s.durableSeq.Load(), "published_seq": s.publishedSeq.Load(), "wal_bytes": s.durableBytes.Load(), "published_bytes": s.publishedBytes.Load(), "pending_bytes": pending, "rows": rows, "model_budget_bytes": memory, "records": s.records.Load(), "syncs": s.syncs.Load(), "sync_ns": s.syncNanos.Load(), "single_record_syncs": s.singleRecordSyncs.Load(), "failed": failed, "icon_reuses": s.iconReuses.Load(), "icon_uploads": s.iconUploads.Load(), "icon_bytes": s.iconBytes.Load(), "icon_chunks": s.iconChunks.Load()}
 }
 
 func postDirectory() string {

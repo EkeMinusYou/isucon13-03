@@ -33,8 +33,8 @@ func TestIconWALAndConditionalGET(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Reusing a durable hash must not add a frame or another Sync.
-	before := s.journal.syncs.Load()
+	// Reusing a complete hash must not add another image chunk.
+	before := s.journal.iconChunks.Load()
 	var wg sync.WaitGroup
 	for i := 0; i < 2; i++ {
 		wg.Add(1)
@@ -54,8 +54,8 @@ func TestIconWALAndConditionalGET(t *testing.T) {
 	if err != nil || string(stored) != string(image) {
 		t.Fatalf("persisted file: image=%q err=%v", stored, err)
 	}
-	if s.journal.syncs.Load() != before {
-		t.Fatal("duplicate image required another Sync")
+	if s.journal.iconChunks.Load() != before {
+		t.Fatal("duplicate image required another write")
 	}
 	previous := currentIcons
 	currentIcons = s

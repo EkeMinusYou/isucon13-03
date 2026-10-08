@@ -119,7 +119,7 @@ func (s *postStore) submit(ctx context.Context, stream int64, op mutationOperati
 		}
 		return ctx.Err()
 	}
-	// Once accepted, cancellation cannot abandon publication of a durable row.
+	// Once accepted, cancellation cannot abandon the complete write and publication.
 	result := <-req.done
 	if result.err != nil {
 		if record.cost() > 0 {

@@ -55,7 +55,7 @@ func (s *postStore) addStream(id, owner int64) {
 	s.userTotals[owner].viewers += s.streamTotals[id].viewers
 }
 
-// Publication runs in WAL order in the sync worker. Readers only see durable state.
+// Publication runs in WAL order in the writer, after each complete file write.
 func (s *postStore) publishRecords(records []postRecord, reserve bool) error {
 	s.dataMu.Lock()
 	defer s.dataMu.Unlock()

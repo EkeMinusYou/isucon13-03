@@ -5,13 +5,17 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strconv"
+	"syscall"
+	"time"
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
@@ -112,7 +116,7 @@ func initializeHandler(c echo.Context) error {
 	appLifecycle.Lock()
 	defer appLifecycle.Unlock()
 	if writer := currentMutations.Swap(nil); writer != nil {
-		writer.close()
+		_ = writer.close()
 	}
 	invalidateIconReplica()
 	if _, err := dbConn.ExecContext(c.Request().Context(), "UPDATE post_wal_state SET ready=FALSE WHERE id=1"); err != nil {
@@ -248,8 +252,12 @@ func main() {
 	}
 	currentMutations.Store(store)
 	defer func() {
-		if store := currentMutations.Load(); store != nil {
-			_ = store.close()
+		appLifecycle.Lock()
+		defer appLifecycle.Unlock()
+		if store := currentMutations.Swap(nil); store != nil {
+			if err := store.close(); err != nil {
+				e.Logger.Errorf("failed to sync WAL on shutdown: %v", err)
+			}
 		}
 	}()
 	if store != nil {
@@ -278,11 +286,25 @@ func main() {
 	if err := updateDNS(context.Background(), "/generation", ""); err != nil {
 		e.Logger.Fatalf("failed to load DNS generation: %v", err)
 	}
-	// HTTPサーバ起動
+	// Drain HTTP requests and sync all accepted writes on service stop.
+	// The deployed service uses SIGQUIT in ExecStop.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGQUIT, os.Interrupt)
+	defer stop()
 	listenAddr := net.JoinHostPort("", strconv.Itoa(listenPort))
-	if err := e.Start(listenAddr); err != nil {
-		e.Logger.Errorf("failed to start HTTP server: %v", err)
-		os.Exit(1)
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- e.Start(listenAddr) }()
+	select {
+	case <-ctx.Done():
+		shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := e.Shutdown(shutdown); err != nil {
+			e.Logger.Errorf("failed to drain HTTP requests: %v", err)
+			_ = e.Close()
+		}
+	case err := <-serveErr:
+		if !errors.Is(err, http.ErrServerClosed) {
+			e.Logger.Fatalf("failed to serve HTTP: %v", err)
+		}
 	}
 }
 

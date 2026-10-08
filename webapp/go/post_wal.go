@@ -452,10 +452,14 @@ func writePostBytes(writer io.Writer, data []byte) error {
 	return nil
 }
 
-type postBatch struct {
-	requests []postRequest
-	records  []postRecord
-	end      int64
+const postSyncInterval = 10 * time.Millisecond
+const postSyncBytes = 1 << 20
+
+// Sync retains only a boundary, never request channels or image payloads.
+type postSyncBoundary struct {
+	seq   uint64
+	end   int64
+	count int
 }
 
 func (s *postStore) writePosts() {
@@ -571,8 +575,8 @@ func (s *postStore) appendPostBatch(batch []postRequest) {
 		err = postsUnavailable("WAL capacity reached")
 	}
 	if err == nil {
-		// Publish the frame boundary only after the complete write. Sync may overlap
-		// subsequent writes, but acknowledgements never exceed its captured boundary.
+		// Complete the file write before publication or request acknowledgement.
+		// The sync worker may overlap subsequent writes.
 		s.walMu.Lock()
 		for i := range records {
 			records[i].iconPos += s.writtenBytes
@@ -581,12 +585,14 @@ func (s *postStore) appendPostBatch(batch []postRequest) {
 		if err == nil {
 			s.writtenBytes += int64(len(frame))
 			s.writtenSeq = seq
-			s.pending = append(s.pending, postBatch{requests: batch, records: records, end: s.writtenBytes})
 		}
 		s.walMu.Unlock()
 		if err != nil {
 			s.fail(fmt.Errorf("WAL write: %w", err))
 		}
+	}
+	if err == nil {
+		err = s.publishRecords(records, false)
 	}
 	if err != nil {
 		// Never continue a partially accepted image after a capacity/encoding error.
@@ -598,46 +604,68 @@ func (s *postStore) appendPostBatch(batch []postRequest) {
 		}
 		return
 	}
-	select {
-	case s.syncWake <- struct{}{}:
-	default:
+	s.publishedBytes.Store(s.writtenBytes)
+	s.publishedSeq.Store(seq)
+	for _, r := range records {
+		if r.Kind == "icon" {
+			s.iconChunks.Add(1)
+			s.iconBytes.Add(uint64(r.IconSize))
+		} else {
+			s.records.Add(1)
+		}
+	}
+	s.walMu.Lock()
+	s.pending.seq = seq
+	s.pending.end = s.writtenBytes
+	s.pending.count += len(records)
+	wake := s.pending.end-s.durableBytes.Load() >= postSyncBytes
+	s.walMu.Unlock()
+	if wake {
+		select {
+		case s.syncWake <- struct{}{}:
+		default:
+		}
+	}
+	for i, r := range batch {
+		if r.done != nil {
+			r.done <- postResult{record: records[i]}
+		}
 	}
 }
 
-// Capture complete frames immediately. Appends made during Sync accumulate
-// for the next group and cannot be acknowledged by the current boundary.
-func (s *postStore) takePostBatches() []postBatch {
+// Capture only completed writes. Later appends belong to the next sync boundary.
+func (s *postStore) takePostSyncBoundary() postSyncBoundary {
 	s.walMu.Lock()
 	defer s.walMu.Unlock()
-	batches := s.pending
-	s.pending = nil
-	return batches
+	boundary := s.pending
+	s.pending = postSyncBoundary{}
+	return boundary
 }
 
 func (s *postStore) syncPosts() {
-	closing := false
+	ticker := time.NewTicker(postSyncInterval)
+	defer ticker.Stop()
 	for {
-		batches := s.takePostBatches()
-		if len(batches) == 0 {
-			if closing {
-				return
-			}
-			_, ok := <-s.syncWake
+		closing := false
+		select {
+		case _, ok := <-s.syncWake:
 			closing = !ok
-			continue
+		case <-ticker.C:
 		}
-		s.syncPostBatches(batches)
+		boundary := s.takePostSyncBoundary()
+		if boundary.count > 0 {
+			s.syncPostBoundary(boundary)
+		}
+		if closing {
+			return
+		}
 	}
 }
 
-func (s *postStore) syncPostBatches(batches []postBatch) {
+func (s *postStore) syncPostBoundary(boundary postSyncBoundary) {
 	err := s.check()
 	if err == nil {
-		count := 0
-		for _, batch := range batches {
-			count += len(batch.records)
-		}
-		if count == 1 {
+		if boundary.count == 1 {
 			s.singleRecordSyncs.Add(1)
 		}
 		start := time.Now()
@@ -649,36 +677,8 @@ func (s *postStore) syncPostBatches(batches []postBatch) {
 		}
 	}
 	if err == nil {
-		for _, batch := range batches {
-			if err = s.publishRecords(batch.records, false); err != nil {
-				s.fail(err)
-				break
-			}
-		}
-		if err == nil {
-			last := batches[len(batches)-1]
-			s.durableBytes.Store(last.end)
-			s.durableSeq.Store(last.records[len(last.records)-1].Seq)
-			s.publishedBytes.Store(last.end)
-			s.publishedSeq.Store(s.durableSeq.Load())
-			for _, batch := range batches {
-				for _, r := range batch.records {
-					if r.Kind == "icon" {
-						s.iconChunks.Add(1)
-						s.iconBytes.Add(uint64(r.IconSize))
-					} else {
-						s.records.Add(1)
-					}
-				}
-			}
-		}
-	}
-	for _, batch := range batches {
-		for i, r := range batch.requests {
-			if r.done != nil {
-				r.done <- postResult{record: batch.records[i], err: err}
-			}
-		}
+		s.durableBytes.Store(boundary.end)
+		s.durableSeq.Store(boundary.seq)
 	}
 }
 

@@ -55,7 +55,7 @@ func newIconStore(ctx context.Context, journal *postStore) (*iconStore, error) {
 	return s, nil
 }
 
-// A database pointer is published only after the shared WAL owns a durable blob.
+// Publish a database pointer only after the entire blob is written to the WAL.
 func (s *iconStore) persist(image []byte) (string, error) {
 	return s.journal.persistIcon(context.Background(), image)
 }
@@ -94,7 +94,7 @@ func (s *iconStore) load(ctx context.Context) error {
 		}
 		if !checked[hash] {
 			if !s.journal.hasIcon(hash) {
-				return fmt.Errorf("missing durable icon for user %d", user.ID)
+				return fmt.Errorf("missing complete icon for user %d", user.ID)
 			}
 			checked[hash] = true
 		}
@@ -150,7 +150,7 @@ func getIconHandler(c echo.Context) error {
 	if iconETagMatches(c.Request().Header.Get("If-None-Match"), hash) {
 		return c.NoContent(http.StatusNotModified)
 	}
-	// Read only immutable, durable WAL fragments from the origin owner.
+	// Read only complete, immutable WAL fragments from the origin owner.
 	reader, err := s.journal.iconReader(hash)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to open icon: "+err.Error())

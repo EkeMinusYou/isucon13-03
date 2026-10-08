@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -42,39 +41,18 @@ func TestSharedWALImagePublicationReuseAndPosts(t *testing.T) {
 	go func() { _, err := s.persistIcon(context.Background(), image); duplicate <- err }()
 	model := &ReactionModel{LivestreamID: 1, EmojiName: "alongside-image"}
 	go func() { post <- s.submit(context.Background(), 1, &reactionMutation{model: model}) }()
-	deadline := time.Now().Add(2 * time.Second)
-	for {
-		s.walMu.Lock()
-		written := s.writtenSeq
-		s.walMu.Unlock()
-		if written >= 4 && s.iconReuses.Load() == 1 {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("image chunks or post failed to reach WAL while Sync was blocked")
-		}
-		runtime.Gosched()
-	}
-	if _, err := s.iconReader(key); err == nil {
-		t.Fatal("incomplete image became readable")
-	}
-	for _, done := range []chan error{first, duplicate, post} {
-		select {
-		case err := <-done:
-			t.Fatalf("acknowledged before durable boundary: %v", err)
-		default:
-		}
-	}
-	unblock.Do(func() { close(release) })
 	for _, done := range []chan error{first, duplicate, post} {
 		select {
 		case err := <-done:
 			if err != nil {
 				t.Fatal(err)
 			}
-		case <-time.After(2 * time.Second):
-			t.Fatal("completion blocked")
+		case <-time.After(time.Second):
+			t.Fatal("image or post completion waited for Sync")
 		}
+	}
+	if s.durableSeq.Load() != 0 || s.publishedSeq.Load() != 4 {
+		t.Fatal("image and post publication was not independent of Sync")
 	}
 	reader, err := s.iconReader(key)
 	if err != nil {
@@ -84,9 +62,9 @@ func TestSharedWALImagePublicationReuseAndPosts(t *testing.T) {
 	if err != nil || !bytes.Equal(got, image) {
 		t.Fatalf("fragment read mismatch: %v", err)
 	}
-	before := s.syncs.Load()
-	if _, err := s.persistIcon(context.Background(), image); err != nil || s.syncs.Load() != before {
-		t.Fatal("durable image was written again")
+	before := s.iconChunks.Load()
+	if _, err := s.persistIcon(context.Background(), image); err != nil || s.iconChunks.Load() != before {
+		t.Fatal("complete image was written again")
 	}
 	_, reactions, err := s.timeline(context.Background(), 1, -1, false)
 	if err != nil || len(reactions) != 1 || reactions[0] != *model {
@@ -94,6 +72,13 @@ func TestSharedWALImagePublicationReuseAndPosts(t *testing.T) {
 	}
 	if s.iconUploads.Load() != 1 || s.iconChunks.Load() != 3 {
 		t.Fatal("duplicate upload created extra image records")
+	}
+	unblock.Do(func() { close(release) })
+	if err := s.close(); err != nil {
+		t.Fatal(err)
+	}
+	if s.durableSeq.Load() != s.publishedSeq.Load() {
+		t.Fatal("close did not drain image and post writes")
 	}
 }
 
@@ -140,17 +125,46 @@ func TestSharedWALMixedFrameAndImageHash(t *testing.T) {
 	}
 }
 
-func TestSharedWALImageSyncFailure(t *testing.T) {
+func TestSharedWALImageWriteFailure(t *testing.T) {
 	s := writerTestStore(t)
-	s.syncFile = func() error { return errors.New("injected image Sync failure") }
+	if err := s.file.Close(); err != nil {
+		t.Fatal(err)
+	}
 	s.writers.Add(1)
 	go s.writePosts()
-	image := []byte("never-durable")
+	image := []byte("never-written")
 	key := sha256.Sum256(image)
 	if _, err := s.persistIcon(context.Background(), image); err == nil {
-		t.Fatal("failed image Sync acknowledged")
+		t.Fatal("failed image write acknowledged")
 	}
 	if s.hasIcon(hex.EncodeToString(key[:])) {
-		t.Fatal("failed image Sync published blob")
+		t.Fatal("failed image write published blob")
+	}
+}
+
+func TestSharedWALImageAsyncSyncFailure(t *testing.T) {
+	s := writerTestStore(t)
+	started, release := make(chan struct{}), make(chan struct{})
+	var unblock sync.Once
+	t.Cleanup(func() { unblock.Do(func() { close(release) }) })
+	s.syncFile = func() error {
+		close(started)
+		<-release
+		return errors.New("injected image Sync failure")
+	}
+	s.writers.Add(1)
+	go s.writePosts()
+	image := []byte("written-before-sync-failure")
+	key, err := s.persistIcon(context.Background(), image)
+	if err != nil || !s.hasIcon(key) {
+		t.Fatalf("written image was not published: %v", err)
+	}
+	<-started
+	unblock.Do(func() { close(release) })
+	if err := s.close(); err == nil || s.durableSeq.Load() != 0 {
+		t.Fatal("async image sync failure was not reported")
+	}
+	if _, err := s.persistIcon(context.Background(), image); err == nil {
+		t.Fatal("failed engine reused an image")
 	}
 }

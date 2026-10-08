@@ -88,11 +88,22 @@ func writerTestStore(t *testing.T) *postStore {
 	s := &postStore{file: file, capacity: capacity, syncFile: func() error { return syncPostData(file) }, streams: make(map[int64]*postStream), slots: make(chan struct{}, 256), requests: make(chan postRequest, 256), iconRequests: make(chan *iconWrite, 16), icons: make(map[string]*walIcon), nextComment: 1, nextReaction: 1, nextWord: 1, nextReport: 1}
 	s.durableBytes.Store(int64(postHeaderSize))
 	s.publishedBytes.Store(int64(postHeaderSize))
-	t.Cleanup(func() { close(s.requests); close(s.iconRequests); s.writers.Wait(); file.Close() })
+	t.Cleanup(func() { _ = s.close() })
 	return s
 }
 
-func TestPostSyncPublicationAndCancellation(t *testing.T) {
+func awaitPostDurable(t *testing.T, s *postStore, seq uint64) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for s.durableSeq.Load() < seq {
+		if time.Now().After(deadline) {
+			t.Fatal("WAL sync did not advance")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+func TestPostWritePublicationAndCancellation(t *testing.T) {
 	s := writerTestStore(t)
 	started, release := make(chan struct{}), make(chan struct{})
 	var unblock sync.Once
@@ -101,6 +112,7 @@ func TestPostSyncPublicationAndCancellation(t *testing.T) {
 	s.writers.Add(1)
 	go s.writePosts()
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	model := &ReactionModel{UserID: 1, LivestreamID: 1, EmojiName: "first"}
 	done := make(chan error, 1)
 	go func() { done <- s.submit(ctx, 1, &reactionMutation{model: model}) }()
@@ -108,26 +120,26 @@ func TestPostSyncPublicationAndCancellation(t *testing.T) {
 	cancel()
 	select {
 	case err := <-done:
-		t.Fatalf("returned before Sync: %v", err)
-	default:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("request waited for Sync")
 	}
-	if s.durableSeq.Load() != 0 {
-		t.Fatal("unsynchronized frame published")
-	}
-	readCtx, stop := context.WithTimeout(context.Background(), 5*time.Millisecond)
-	_, _, err := s.timeline(readCtx, 1, -1, false)
-	stop()
-	if err != nil {
-		t.Fatalf("read of committed state blocked on Sync: %v", err)
-	}
-	unblock.Do(func() { close(release) })
-	if err := <-done; err != nil {
-		t.Fatal(err)
+	if s.durableSeq.Load() != 0 || s.publishedSeq.Load() != 1 {
+		t.Fatal("written and durable boundaries were not separated")
 	}
 	_, rows, err := s.timeline(context.Background(), 1, -1, false)
 	if err != nil || len(rows) != 1 || rows[0].ID != model.ID || model.ID <= 0 {
-		t.Fatalf("durable publication: %+v %v", rows, err)
+		t.Fatalf("written publication: %+v %v", rows, err)
 	}
+	reader := io.NewSectionReader(s.file, int64(postHeaderSize), s.publishedBytes.Load()-int64(postHeaderSize))
+	records, _, err := readPostFrame(reader, 0)
+	if err != nil || len(records) != 1 || records[0].ID != model.ID {
+		t.Fatalf("acknowledged post was not completely written: %v", err)
+	}
+	unblock.Do(func() { close(release) })
+	awaitPostDurable(t, s, 1)
 }
 
 func TestPostSyncWakeClosure(t *testing.T) {
@@ -149,16 +161,13 @@ func TestPostSyncWakeClosure(t *testing.T) {
 				}
 				<-done
 			}()
-			select {
-			case result := <-r.done:
-				if result.err != nil || result.record.ID != 1 {
-					t.Fatalf("drain result: %+v", result)
-				}
-			case <-time.After(2 * time.Second):
-				t.Fatal("notification or shutdown left a frame pending")
+			result := <-r.done
+			if result.err != nil || result.record.ID != 1 {
+				t.Fatalf("drain result: %+v", result)
 			}
-			if s.syncs.Load() != 1 || s.singleRecordSyncs.Load() != 1 || s.durableSeq.Load() != 1 {
-				t.Fatal("singleton was not durably published")
+			awaitPostDurable(t, s, 1)
+			if s.syncs.Load() != 1 || s.singleRecordSyncs.Load() != 1 {
+				t.Fatal("singleton was not synced")
 			}
 		})
 	}
@@ -170,9 +179,15 @@ func TestPostSyncFailureAndGrouping(t *testing.T) {
 		s.syncFile = func() error { return errors.New("injected Sync failure") }
 		s.writers.Add(1)
 		go s.writePosts()
-		model := &ReactionModel{LivestreamID: 1, EmojiName: "never-acknowledged"}
-		if err := s.submit(context.Background(), 1, &reactionMutation{model: model}); err == nil || model.ID != 0 {
-			t.Fatal("failed Sync acknowledged")
+		model := &ReactionModel{LivestreamID: 1, EmojiName: "written-before-sync"}
+		if err := s.submit(context.Background(), 1, &reactionMutation{model: model}); err != nil || model.ID == 0 {
+			t.Fatal("complete write was not acknowledged")
+		}
+		if err := s.close(); err == nil || s.durableSeq.Load() != 0 || s.publishedSeq.Load() != 1 {
+			t.Fatal("sync failure was not reported at close")
+		}
+		if err := s.submit(context.Background(), 1, &reactionMutation{model: model}); err == nil {
+			t.Fatal("failed engine accepted another post")
 		}
 		if _, _, err := s.timeline(context.Background(), 1, -1, false); err == nil {
 			t.Fatal("failed engine served timeline")
@@ -195,13 +210,16 @@ func TestPostSyncFailureAndGrouping(t *testing.T) {
 				t.Fatalf("group result: %+v", result)
 			}
 		}
-		if s.syncs.Load() != 1 || s.records.Load() != 16 {
+		if err := s.close(); err != nil {
+			t.Fatal(err)
+		}
+		if s.syncs.Load() != 1 || s.records.Load() != 16 || s.durableSeq.Load() != 16 {
 			t.Fatal("independent streams did not share Sync")
 		}
 	})
 }
 
-func TestPostAppendOverlapsSyncWithoutEarlyAcknowledgement(t *testing.T) {
+func TestPostAppendAndPublicationOverlapSync(t *testing.T) {
 	s := writerTestStore(t)
 	started := make(chan int, 2)
 	releases := []chan struct{}{make(chan struct{}), make(chan struct{})}
@@ -220,51 +238,57 @@ func TestPostAppendOverlapsSyncWithoutEarlyAcknowledgement(t *testing.T) {
 	}
 	s.writers.Add(1)
 	go s.writePosts()
-	first, second := &ReactionModel{LivestreamID: 1, EmojiName: "first"}, &ReactionModel{LivestreamID: 2, EmojiName: "second"}
-	done1, done2 := make(chan error, 1), make(chan error, 1)
-	go func() { done1 <- s.submit(context.Background(), 1, &reactionMutation{model: first}) }()
+	first, second := &ReactionModel{LivestreamID: 1, EmojiName: "first"}, &ReactionModel{LivestreamID: 1, EmojiName: "second"}
+	if err := s.submit(context.Background(), 1, &reactionMutation{model: first}); err != nil {
+		t.Fatal(err)
+	}
 	if i := <-started; i != 0 {
 		t.Fatal("unexpected first Sync")
 	}
-	go func() { done2 <- s.submit(context.Background(), 2, &reactionMutation{model: second}) }()
-	deadline := time.Now().Add(time.Second)
-	for {
-		s.walMu.Lock()
-		pending := len(s.pending)
-		s.walMu.Unlock()
-		if pending != 0 {
-			break
+	done := make(chan error, 1)
+	go func() { done <- s.submit(context.Background(), 1, &reactionMutation{model: second}) }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
 		}
-		if time.Now().After(deadline) {
-			t.Fatal("append blocked on previous Sync")
-		}
-		time.Sleep(time.Millisecond)
+	case <-time.After(time.Second):
+		t.Fatal("second append or publication blocked on Sync")
+	}
+	if s.durableSeq.Load() != 0 || s.publishedSeq.Load() != 2 {
+		t.Fatal("later written frame was not published independently of Sync")
+	}
+	_, rows, err := s.timeline(context.Background(), 1, -1, false)
+	if err != nil || len(rows) != 2 {
+		t.Fatal("unsynchronized written rows were not visible")
 	}
 	once[0].Do(func() { close(releases[0]) })
-	if err := <-done1; err != nil {
-		t.Fatal(err)
-	}
 	if i := <-started; i != 1 {
 		t.Fatal("unexpected second Sync")
 	}
-	if s.durableSeq.Load() != 1 {
-		t.Fatal("first Sync acknowledged a later frame")
-	}
-	select {
-	case err := <-done2:
-		t.Fatalf("second frame acknowledged early: %v", err)
-	default:
-	}
-	_, rows, err := s.timeline(context.Background(), 2, -1, false)
-	if err != nil || len(rows) != 0 {
-		t.Fatal("unsynchronized later frame became visible")
+	if s.durableSeq.Load() != 1 || s.publishedSeq.Load() != 2 {
+		t.Fatal("first Sync advanced beyond its captured boundary")
 	}
 	once[1].Do(func() { close(releases[1]) })
-	if err := <-done2; err != nil {
+	awaitPostDurable(t, s, 2)
+	if second.ID <= first.ID {
+		t.Fatal("IDs lost")
+	}
+}
+
+func TestPostWriteFailure(t *testing.T) {
+	s := writerTestStore(t)
+	if err := s.file.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if second.ID <= first.ID || s.durableSeq.Load() != 2 {
-		t.Fatal("sequence or IDs lost")
+	s.writers.Add(1)
+	go s.writePosts()
+	model := &ReactionModel{LivestreamID: 1, EmojiName: "failed-write"}
+	if err := s.submit(context.Background(), 1, &reactionMutation{model: model}); err == nil {
+		t.Fatal("failed file write was acknowledged")
+	}
+	if model.ID != 0 || s.publishedSeq.Load() != 0 || s.records.Load() != 0 {
+		t.Fatal("failed file write was published")
 	}
 }
 
@@ -288,7 +312,7 @@ func TestPostPreallocatedCapacity(t *testing.T) {
 	if err != nil || info.Size() != 1<<20 {
 		t.Fatalf("preallocated file changed size: %v %v", info, err)
 	}
-	if err := checkPostZeroTail(s.file, s.durableBytes.Load(), info.Size()); err != nil {
+	if err := checkPostZeroTail(s.file, s.publishedBytes.Load(), info.Size()); err != nil {
 		t.Fatal(err)
 	}
 }
