@@ -92,10 +92,10 @@ func main() {
 			}
 		}
 		fmt.Printf("%s: login and eight authenticated reads passed\n", addr)
-		if err := checkTimelineGzip(client); err != nil {
+		if err := checkResponseEncodings(client); err != nil {
 			log.Fatal(err)
 		}
-		fmt.Printf("%s: search/timeline gzip negotiation and decoded JSON passed\n", addr)
+		fmt.Printf("%s: search gzip and uncompressed timelines passed\n", addr)
 		if *mutationsPhase != "" {
 			phase := *mutationsPhase
 			// Moderation changes shared state; later ingresses verify the first write.

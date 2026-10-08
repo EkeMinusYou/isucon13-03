@@ -2,6 +2,9 @@
 
 2026-10-09、追加提案①と③を実装し、`task deploy-app`でisucon-3へ反映した。
 
+コメント・リアクションGETのgzipは、後続の[非圧縮比較](timeline-identity.md)で無効化した。
+以下の確認結果は、その変更前の記録。
+
 ## ① 配信一覧・検索のJSONとgzipを再利用
 
 対象は`GET /api/livestream/search`、`GET /api/livestream`、

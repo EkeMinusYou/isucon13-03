@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-func checkTimelineGzip(client *http.Client) error {
+func checkResponseEncodings(client *http.Client) error {
 	if _, err := checkJSONGzip(client, "/api/livestream/search?limit=10"); err != nil {
 		return err
 	}
@@ -22,16 +22,16 @@ func checkTimelineGzip(client *http.Client) error {
 		ID int64 `json:"id"`
 	}
 	if err := json.Unmarshal(data, &streams); err != nil || len(streams) == 0 {
-		return fmt.Errorf("timeline gzip: no initialized livestream: %v", err)
+		return fmt.Errorf("timeline encoding: no initialized livestream: %v", err)
 	}
 	for _, route := range []string{"livecomment", "reaction"} {
 		for _, stream := range streams {
 			path := fmt.Sprintf("/api/livestream/%d/%s?limit=12", stream.ID, route)
-			compressed, err := checkJSONGzip(client, path)
+			size, err := checkJSONIdentity(client, path)
 			if err != nil {
 				return err
 			}
-			if compressed {
+			if size >= 1024 {
 				break
 			}
 		}
@@ -65,4 +65,24 @@ func checkJSONGzip(client *http.Client, path string) (bool, error) {
 		return false, fmt.Errorf("%s: expected gzip for a large JSON response", path)
 	}
 	return false, nil
+}
+
+func checkJSONIdentity(client *http.Client, path string) (int, error) {
+	var plain []byte
+	for _, accept := range []string{"identity", "gzip"} {
+		res, body, err := requestResponse(client, http.MethodGet, path, "", map[string]string{"Accept-Encoding": accept})
+		if err != nil {
+			return 0, fmt.Errorf("%s: identity response failed: %v", path, err)
+		}
+		if res.StatusCode != http.StatusOK || res.Header.Get("Content-Encoding") != "" || !json.Valid(body) {
+			return 0, fmt.Errorf("%s: expected uncompressed JSON for Accept-Encoding %s: status=%d headers=%v", path, accept, res.StatusCode, res.Header)
+		}
+		if accept == "identity" {
+			plain = body
+		} else if !bytes.Equal(body, plain) {
+			return 0, fmt.Errorf("%s: Accept-Encoding changed timeline JSON", path)
+		}
+	}
+	fmt.Printf("%s: uncompressed JSON %d bytes with identity/gzip requests\n", path, len(plain))
+	return len(plain), nil
 }

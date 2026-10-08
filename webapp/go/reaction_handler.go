@@ -70,7 +70,7 @@ func getReactionsHandler(c echo.Context) error {
 	}
 
 	defer releaseResponseJSON(reactions)
-	return writeCompressedResponseJSON(c, reactions)
+	return writeResponseJSON(c, reactions)
 }
 
 func postReactionHandler(c echo.Context) error {

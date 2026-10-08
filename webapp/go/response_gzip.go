@@ -5,12 +5,9 @@ import (
 	"compress/gzip"
 	"io"
 	"math"
-	"net/http"
 	"strconv"
 	"strings"
 	"sync"
-
-	"github.com/labstack/echo/v4"
 )
 
 type responseGzip struct {
@@ -28,11 +25,19 @@ func compressResponseJSON(data []byte) ([]byte, error) {
 	state.buffer.Reset()
 	state.writer.Reset(&state.buffer)
 	defer func() {
-		if state.buffer.Cap() <= 128<<10 { responseGzipPool.Put(state) }
+		if state.buffer.Cap() <= 128<<10 {
+			responseGzipPool.Put(state)
+		}
 	}()
-	if _, err := state.writer.Write(data); err != nil { return nil, err }
-	if err := state.writer.Close(); err != nil { return nil, err }
-	if state.buffer.Len() >= len(data) { return nil, nil }
+	if _, err := state.writer.Write(data); err != nil {
+		return nil, err
+	}
+	if err := state.writer.Close(); err != nil {
+		return nil, err
+	}
+	if state.buffer.Len() >= len(data) {
+		return nil, nil
+	}
 	return append([]byte(nil), state.buffer.Bytes()...), nil
 }
 
@@ -81,34 +86,4 @@ func acceptsResponseGzip(headers []string) bool {
 		return explicit
 	}
 	return wildcard
-}
-
-func writeJSONEncoding(c echo.Context, data []byte, compress bool) error {
-	if !compress || c.Request().Method != http.MethodGet {
-		return c.JSONBlob(http.StatusOK, data)
-	}
-	c.Response().Header().Add("Vary", "Accept-Encoding")
-	if len(data) < 1024 || !acceptsResponseGzip(c.Request().Header.Values("Accept-Encoding")) {
-		return c.JSONBlob(http.StatusOK, data)
-	}
-	state := responseGzipPool.Get().(*responseGzip)
-	state.buffer.Reset()
-	state.writer.Reset(&state.buffer)
-	defer func() {
-		if state.buffer.Cap() <= 128<<10 {
-			responseGzipPool.Put(state)
-		}
-	}()
-	if _, err := state.writer.Write(data); err != nil {
-		return err
-	}
-	if err := state.writer.Close(); err != nil {
-		return err
-	}
-	if state.buffer.Len() >= len(data) {
-		return c.JSONBlob(http.StatusOK, data)
-	}
-	c.Response().Header().Set("Content-Encoding", "gzip")
-	c.Response().Header().Del("Content-Length")
-	return c.JSONBlob(http.StatusOK, state.buffer.Bytes())
 }

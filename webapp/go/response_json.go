@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strconv"
 	"sync"
 
@@ -93,24 +94,16 @@ func releaseResponseJSON(b *responseJSONBuffer) {
 }
 
 func writeResponseJSON(c echo.Context, b *responseJSONBuffer) error {
-	return writeResponseJSONEncoding(c, b, false)
-}
-
-func writeCompressedResponseJSON(c echo.Context, b *responseJSONBuffer) error {
-	return writeResponseJSONEncoding(c, b, true)
-}
-
-func writeResponseJSONEncoding(c echo.Context, b *responseJSONBuffer, compress bool) error {
 	if _, pretty := c.QueryParams()["pretty"]; pretty || c.Echo().Debug {
 		var indented bytes.Buffer
 		if err := json.Indent(&indented, b.data, "", "  "); err != nil {
 			return err
 		}
 		indented.WriteByte('\n')
-		return writeJSONEncoding(c, indented.Bytes(), compress)
+		return c.JSONBlob(http.StatusOK, indented.Bytes())
 	}
 	b.data = append(b.data, '\n')
-	return writeJSONEncoding(c, b.data, compress)
+	return c.JSONBlob(http.StatusOK, b.data)
 }
 
 type responseJSONBuilder struct {
