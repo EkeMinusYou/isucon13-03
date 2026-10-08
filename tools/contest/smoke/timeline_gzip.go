@@ -7,8 +7,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 )
+
+var compressionSamplesDirectory string
 
 func checkTimelineGzip(client *http.Client) error {
 	if _, err := checkJSONGzip(client, "/api/livestream/search?limit=10"); err != nil {
@@ -43,6 +47,20 @@ func checkJSONGzip(client *http.Client, path string) (bool, error) {
 	plainRes, plain, err := requestResponse(client, http.MethodGet, path, "", map[string]string{"Accept-Encoding": "identity"})
 	if err != nil || plainRes.StatusCode != http.StatusOK || !json.Valid(plain) || plainRes.Header.Get("Content-Encoding") != "" {
 		return false, fmt.Errorf("%s: identity response failed: %v", path, err)
+	}
+	if compressionSamplesDirectory != "" && len(plain) >= 1024 {
+		name := "search"
+		for _, route := range []string{"livecomment", "reaction"} {
+			if strings.Contains(path, "/"+route+"?") {
+				name = route
+			}
+		}
+		if err := os.MkdirAll(compressionSamplesDirectory, 0755); err != nil {
+			return false, err
+		}
+		if err := os.WriteFile(filepath.Join(compressionSamplesDirectory, name+".json"), plain, 0644); err != nil {
+			return false, err
+		}
 	}
 	res, encoded, err := requestResponse(client, http.MethodGet, path, "", map[string]string{"Accept-Encoding": "gzip"})
 	if err != nil || res.StatusCode != http.StatusOK || !strings.Contains(strings.Join(res.Header.Values("Vary"), ","), "Accept-Encoding") {

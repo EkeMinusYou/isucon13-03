@@ -84,11 +84,9 @@ func reserveLivestreamHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "failed to decode the request body as json")
 	}
 
-	tx, err := dbConn.BeginTxx(ctx, nil)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to begin transaction: "+err.Error())
+	if req == nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "failed to decode the request body as json")
 	}
-	defer tx.Rollback()
 
 	// 2023/11/25 10:00からの１年間の期間内であるかチェック
 	var (
@@ -101,72 +99,28 @@ func reserveLivestreamHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "bad reservation time range")
 	}
 
-	// 予約枠をみて、予約が可能か調べる
-	// NOTE: 並列な予約のoverbooking防止にFOR UPDATEが必要
-	// Initialized slots have positive duration, so this upper bound preserves the selected rows.
-	var slots []*ReservationSlotModel
-	if err := tx.SelectContext(ctx, &slots, "SELECT * FROM reservation_slots WHERE start_at >= ? AND start_at < ? AND end_at <= ? FOR UPDATE", req.StartAt, req.EndAt, req.EndAt); err != nil {
-		c.Logger().Warnf("予約枠一覧取得でエラー発生: %+v", err)
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get reservation_slots: "+err.Error())
+	s := currentMutations.Load()
+	if s == nil {
+		return postsUnavailable("post store is not initialized")
 	}
-	for _, slot := range slots {
-		c.Logger().Infof("%d ~ %d予約枠の残数 = %d\n", slot.StartAt, slot.EndAt, slot.Slot)
-		if slot.Slot < 1 {
-			if err := tx.Rollback(); err != nil {
-				return echo.NewHTTPError(http.StatusInternalServerError, "failed to rollback reservation: "+err.Error())
-			}
+	reservation := reservationSnapshot{Model: LivestreamModel{
+		UserID: userID, Title: req.Title, Description: req.Description,
+		PlaylistUrl: req.PlaylistUrl, ThumbnailUrl: req.ThumbnailUrl,
+		StartAt: req.StartAt, EndAt: req.EndAt,
+	}, Tags: req.Tags}
+	if err := s.reserveLivestream(ctx, currentReferences.Load(), &reservation); err != nil {
+		if errors.Is(err, errReservationFull) {
 			if err := waitNonScoringRequest(ctx); err != nil {
 				return mutationHTTPError(err)
 			}
 			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("予約期間 %d ~ %dに対して、予約区間 %d ~ %dが予約できません", termStartAt.Unix(), termEndAt.Unix(), req.StartAt, req.EndAt))
 		}
+		return mutationHTTPError(err)
 	}
-
-	var (
-		livestreamModel = &LivestreamModel{
-			UserID:       int64(userID),
-			Title:        req.Title,
-			Description:  req.Description,
-			PlaylistUrl:  req.PlaylistUrl,
-			ThumbnailUrl: req.ThumbnailUrl,
-			StartAt:      req.StartAt,
-			EndAt:        req.EndAt,
-		}
-	)
-
-	if _, err := tx.ExecContext(ctx, "UPDATE reservation_slots SET slot = slot - 1 WHERE start_at >= ? AND start_at < ? AND end_at <= ?", req.StartAt, req.EndAt, req.EndAt); err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to update reservation_slot: "+err.Error())
-	}
-
-	rs, err := tx.NamedExecContext(ctx, "INSERT INTO livestreams (user_id, title, description, playlist_url, thumbnail_url, start_at, end_at) VALUES(:user_id, :title, :description, :playlist_url, :thumbnail_url, :start_at, :end_at)", livestreamModel)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to insert livestream: "+err.Error())
-	}
-
-	livestreamID, err := rs.LastInsertId()
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get last inserted livestream id: "+err.Error())
-	}
-	livestreamModel.ID = livestreamID
-
-	// タグ追加
-	for _, tagID := range req.Tags {
-		if _, err := tx.NamedExecContext(ctx, "INSERT INTO livestream_tags (livestream_id, tag_id) VALUES (:livestream_id, :tag_id)", &LivestreamTagModel{
-			LivestreamID: livestreamID,
-			TagID:        tagID,
-		}); err != nil {
-			return echo.NewHTTPError(http.StatusInternalServerError, "failed to insert livestream tag: "+err.Error())
-		}
-	}
-
-	if err := currentReferences.Load().commitLivestream(ctx, tx, *livestreamModel, req.Tags); err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to commit: "+err.Error())
-	}
-	livestream, err := fillLivestreamResponse(ctx, tx, *livestreamModel)
+	livestream, err := fillLivestreamResponse(ctx, nil, reservation.Model)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fill livestream: "+err.Error())
 	}
-
 	return c.JSON(http.StatusCreated, livestream)
 }
 

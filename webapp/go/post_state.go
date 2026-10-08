@@ -39,6 +39,10 @@ func (s *postStore) addUser(id int64, name string) {
 func (s *postStore) addStream(id, owner int64) {
 	s.dataMu.Lock()
 	defer s.dataMu.Unlock()
+	s.addStreamLocked(id, owner)
+}
+
+func (s *postStore) addStreamLocked(id, owner int64) {
 	s.initState()
 	if _, ok := s.owners[id]; ok {
 		return
@@ -60,6 +64,12 @@ func (s *postStore) publishRecords(records []postRecord, reserve bool) error {
 	defer s.dataMu.Unlock()
 	s.initState()
 	for _, r := range records {
+		if r.Kind == "reservation" {
+			if err := s.publishReservation(r, reserve); err != nil {
+				return err
+			}
+			continue
+		}
 		if r.Kind == "icon" {
 			if err := s.publishIconChunk(r); err != nil {
 				return err
@@ -237,11 +247,19 @@ func (s *postStore) load(ctx context.Context) error {
 		return err
 	}
 	for _, x := range streams {
+		if x.ID >= s.nextStream {
+			s.nextStream = x.ID + 1
+		}
 		if _, err := s.stream(x.ID); err != nil {
 			return err
 		}
 		s.addStream(x.ID, x.Owner)
 	}
+	if err := s.db.SelectContext(ctx, &s.reservationSlots, "SELECT * FROM reservation_slots ORDER BY start_at,id"); err != nil {
+		return err
+	}
+	s.reservationGate = make(chan struct{}, 1)
+	s.reservations = make(map[int64]reservationSnapshot)
 	var comments []LivecommentModel
 	if err := s.db.SelectContext(ctx, &comments, "SELECT * FROM livecomments ORDER BY id"); err != nil {
 		return err
@@ -308,11 +326,11 @@ func (s *postStore) load(ctx context.Context) error {
 		Name string `db:"TABLE_NAME"`
 		Next int64  `db:"next_id"`
 	}
-	if err := s.db.SelectContext(ctx, &counters, "SELECT TABLE_NAME,COALESCE(AUTO_INCREMENT,1) AS next_id FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME IN ('livecomments','reactions','ng_words','livecomment_reports')"); err != nil {
+	if err := s.db.SelectContext(ctx, &counters, "SELECT TABLE_NAME,COALESCE(AUTO_INCREMENT,1) AS next_id FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME IN ('livecomments','reactions','ng_words','livecomment_reports','livestreams')"); err != nil {
 		return err
 	}
 	for _, c := range counters {
-		kind := map[string]string{"livecomments": "comment", "reactions": "reaction", "ng_words": "moderate", "livecomment_reports": "report"}[c.Name]
+		kind := map[string]string{"livecomments": "comment", "reactions": "reaction", "ng_words": "moderate", "livecomment_reports": "report", "livestreams": "reservation"}[c.Name]
 		counter := s.idCounter(kind)
 		if c.Next > *counter {
 			*counter = c.Next

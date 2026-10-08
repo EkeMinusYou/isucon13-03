@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -59,6 +58,10 @@ type referenceStore struct {
 var currentReferences atomic.Pointer[referenceStore]
 
 func reloadReferences(ctx context.Context) error {
+	return reloadReferencesFrom(ctx, currentMutations.Load())
+}
+
+func reloadReferencesFrom(ctx context.Context, posts *postStore) error {
 	tx, err := dbConn.BeginTxx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return err
@@ -112,6 +115,13 @@ func reloadReferences(ctx context.Context) error {
 			ref := value.(*livestreamReference)
 			ref.tagIDs = append(ref.tagIDs, link.TagID)
 		}
+	}
+	if posts != nil {
+		posts.dataMu.RLock()
+		for _, reservation := range posts.reservations {
+			store.livestreams.Store(reservation.Model.ID, &livestreamReference{model: reservation.Model, tagIDs: reservation.Tags})
+		}
+		posts.dataMu.RUnlock()
 	}
 	store.livestreams.Range(func(_, value any) bool {
 		store.indexStream(value.(*livestreamReference))
@@ -178,32 +188,9 @@ func (s *referenceStore) commitUser(tx *sqlx.Tx, user User) error {
 	return nil
 }
 
-func (s *referenceStore) commitLivestream(ctx context.Context, tx *sqlx.Tx, model LivestreamModel, tagIDs []int64) error {
-	if _, err := s.user(ctx, model.UserID); err != nil {
-		return err
-	}
-	catalog := currentTags.Load()
-	for _, id := range tagIDs {
-		if _, ok := catalog.byID[id]; !ok {
-			return sql.ErrNoRows
-		}
-	}
-	tags := append([]int64{}, tagIDs...)
-	sort.Slice(tags, func(i, j int) bool { return tags[i] < tags[j] })
-	ref := &livestreamReference{model: model, tagIDs: tags, referencePublication: referencePublication{ready: make(chan struct{})}}
-	s.livestreams.Store(model.ID, ref)
-	if err := tx.Commit(); err != nil {
-		s.livestreams.Delete(model.ID)
-		ref.err = sql.ErrNoRows
-		close(ref.ready)
-		return err
-	}
-	if err := ensurePostStream(model.ID, model.UserID); err != nil {
-		ref.err = err
-		close(ref.ready)
-		return err
-	}
+func (s *referenceStore) publishLivestream(reservation reservationSnapshot) {
+	ref := &livestreamReference{model: reservation.Model, tagIDs: reservation.Tags, referencePublication: referencePublication{ready: make(chan struct{})}}
+	s.livestreams.Store(ref.model.ID, ref)
 	s.indexStream(ref)
 	close(ref.ready)
-	return nil
 }

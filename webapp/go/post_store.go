@@ -68,6 +68,10 @@ type postStore struct {
 	writtenSeq                   uint64
 	writtenBytes                 int64
 	nextWord, nextReport         int64
+	nextStream                   int64
+	reservationGate              chan struct{}
+	reservationSlots             []ReservationSlotModel
+	reservations                 map[int64]reservationSnapshot
 	iconMu                       sync.Mutex
 	icons                        map[string]*walIcon
 	iconRequests                 chan *iconWrite
@@ -200,16 +204,4 @@ func postDirectory() string {
 		return dir
 	}
 	return "/var/lib/isupipe/wal"
-}
-
-func ensurePostStream(id, owner int64) error {
-	s := currentMutations.Load()
-	if s == nil {
-		return postsUnavailable("post store is not initialized")
-	}
-	if _, err := s.stream(id); err != nil {
-		return err
-	}
-	s.addStream(id, owner)
-	return nil
 }

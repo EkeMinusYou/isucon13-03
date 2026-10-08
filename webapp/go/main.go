@@ -145,7 +145,7 @@ func initializeHandler(c echo.Context) error {
 	icons, err := newIconStore(c.Request().Context(), store)
 	if err == nil {
 		currentIcons = icons
-		err = reloadReferences(c.Request().Context())
+		err = reloadReferencesFrom(c.Request().Context(), store)
 	}
 	if err != nil {
 		store.close()

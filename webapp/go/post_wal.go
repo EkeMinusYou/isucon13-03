@@ -31,26 +31,32 @@ var postCRC = crc32.MakeTable(crc32.Castagnoli)
 var errPostFrameHeader = errors.New("WAL frame header checksum or size mismatch")
 
 type postRecord struct {
-	Seq       uint64                  `json:"seq"`
-	Kind      string                  `json:"kind"`
-	ID        int64                   `json:"id"`
-	UserID    int64                   `json:"user"`
-	StreamID  int64                   `json:"stream"`
-	Text      string                  `json:"text"`
-	Tip       int64                   `json:"tip,omitempty"`
-	CreatedAt int64                   `json:"created"`
-	Deleted   []int64                 `json:"deleted,omitempty"`
-	Report    *LivecommentReportModel `json:"report,omitempty"`
-	IconHash  string                  `json:"hash,omitempty"`
-	IconTotal int64                   `json:"total,omitempty"`
-	IconStart int64                   `json:"start,omitempty"`
-	IconSize  int                     `json:"size,omitempty"`
-	iconData  []byte
-	iconPos   int64
+	Seq         uint64                  `json:"seq"`
+	Kind        string                  `json:"kind"`
+	ID          int64                   `json:"id"`
+	UserID      int64                   `json:"user"`
+	StreamID    int64                   `json:"stream"`
+	Text        string                  `json:"text"`
+	Tip         int64                   `json:"tip,omitempty"`
+	CreatedAt   int64                   `json:"created"`
+	Deleted     []int64                 `json:"deleted,omitempty"`
+	Report      *LivecommentReportModel `json:"report,omitempty"`
+	Reservation *reservationSnapshot    `json:"reservation,omitempty"`
+	IconHash    string                  `json:"hash,omitempty"`
+	IconTotal   int64                   `json:"total,omitempty"`
+	IconStart   int64                   `json:"start,omitempty"`
+	IconSize    int                     `json:"size,omitempty"`
+	iconData    []byte
+	iconPos     int64
 }
 
 func (r postRecord) cost() int64 {
 	switch r.Kind {
+	case "reservation":
+		if r.Reservation != nil {
+			m := r.Reservation.Model
+			return int64(1024 + len(m.Title) + len(m.Description) + len(m.PlaylistUrl) + len(m.ThumbnailUrl) + 32*len(r.Reservation.Tags))
+		}
 	case "moderate":
 		// Include the compiled LIKE tokens, stored word and author map entry.
 		return int64(512 + len(r.Text) + 4*(utf8.RuneCountInString(r.Text)+2))
@@ -251,7 +257,7 @@ func openPostStore(ctx context.Context, db *sqlx.DB, dir string) (*postStore, er
 	if capacity < int64(postHeaderSize+postEndSize) || capacity > postWALLimit || info.Size() != capacity {
 		return nil, fmt.Errorf("WAL capacity or physical size mismatch")
 	}
-	s := &postStore{db: db, generation: state.Generation, file: file, capacity: capacity, streams: make(map[int64]*postStream), slots: make(chan struct{}, 256), requests: make(chan postRequest, 256), iconRequests: make(chan *iconWrite, 16), icons: make(map[string]*walIcon), nextComment: 1, nextReaction: 1, nextWord: 1, nextReport: 1}
+	s := &postStore{db: db, generation: state.Generation, file: file, capacity: capacity, streams: make(map[int64]*postStream), slots: make(chan struct{}, 256), requests: make(chan postRequest, 256), iconRequests: make(chan *iconWrite, 16), icons: make(map[string]*walIcon), nextComment: 1, nextReaction: 1, nextWord: 1, nextReport: 1, nextStream: 1}
 	if err := s.load(ctx); err != nil {
 		return nil, err
 	}
@@ -562,6 +568,12 @@ func (s *postStore) appendPostBatch(batch []postRequest) {
 				copy.ID = records[i].ID
 				records[i].Report = &copy
 			}
+			if records[i].Reservation != nil {
+				copy := *records[i].Reservation
+				copy.Model.ID = records[i].ID
+				records[i].StreamID = records[i].ID
+				records[i].Reservation = &copy
+			}
 			seq++
 			records[i].Seq = seq
 		}
@@ -683,6 +695,8 @@ func (s *postStore) syncPostBoundary(boundary postSyncBoundary) {
 
 func (s *postStore) idCounter(kind string) *int64 {
 	switch kind {
+	case "reservation":
+		return &s.nextStream
 	case "comment":
 		return &s.nextComment
 	case "reaction":
@@ -695,6 +709,12 @@ func (s *postStore) idCounter(kind string) *int64 {
 	return nil
 }
 func validPostRecord(r postRecord) bool {
+	if r.Kind == "reservation" {
+		return r.ID > 0 && r.ID < math.MaxInt64 && r.Reservation != nil && r.Report == nil && len(r.Deleted) == 0 && r.IconHash == "" && r.IconSize == 0 && r.IconTotal == 0 && r.IconStart == 0 && r.Reservation.Model.ID == r.ID && r.StreamID == r.ID && r.Reservation.Model.UserID == r.UserID && validReservation(*r.Reservation)
+	}
+	if r.Reservation != nil {
+		return false
+	}
 	if r.Kind == "icon" {
 		return r.ID == 0 && r.Report == nil && validIconHash(r.IconHash) && r.IconTotal >= 0 && r.IconTotal <= iconMaxSize && r.IconStart >= 0 && r.IconStart <= r.IconTotal && r.IconSize >= 0 && r.IconSize <= iconChunkSize && r.IconStart+int64(r.IconSize) <= r.IconTotal && (r.IconSize > 0 || r.IconTotal == 0)
 	}

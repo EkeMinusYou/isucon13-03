@@ -2,8 +2,8 @@ package main
 
 import "sort"
 
-// The database remains authoritative; only committed references enter these
-// indexes. Each request copies its pointer slice before releasing the lock.
+// Only committed SQL or published WAL references enter these indexes.
+// Each request copies its pointer slice before releasing the lock.
 func (s *referenceStore) indexStream(ref *livestreamReference) {
 	s.indexMu.Lock()
 	defer s.indexMu.Unlock()

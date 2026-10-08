@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"compress/gzip"
 	"io"
 	"math"
 	"net/http"
@@ -10,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/klauspost/compress/gzip"
 	"github.com/labstack/echo/v4"
 )
 

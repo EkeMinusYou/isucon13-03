@@ -1,12 +1,13 @@
 module github.com/isucon/isucon13/webapp/go
 
-go 1.21
+go 1.24
 
 require (
 	github.com/EkeMinusYou/isucon-template/tools/measurement v0.0.0
 	github.com/go-sql-driver/mysql v1.7.1
 	github.com/google/uuid v1.3.1
 	github.com/jmoiron/sqlx v1.3.5
+	github.com/klauspost/compress v1.19.2
 	github.com/labstack/echo/v4 v4.11.1
 	github.com/labstack/gommon v0.4.0
 	golang.org/x/crypto v0.11.0

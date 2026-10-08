@@ -765,6 +765,36 @@ tasks:
       - task: deploy-app
       - '{{.SSH}} {{.SSH_USER}}@{{.ENTRY_HOST}} ''{{.SMOKE_REMOTE_DIR}}/smoke {{.SMOKE_ARGS}} -icons-phase read'''
 
+  check-response-compression:
+    desc: 保存した同一JSONのgzip時間と圧縮後bytesをLinux/amd64で比較する（競技ベンチなし）
+    preconditions:
+      - sh: test ! -f '{{.RUN_STATE_FILE}}'
+        msg: active benchmark exists
+      - sh: test -f .task/response-compression/samples/search.json
+        msg: run task collect-response-compression-samples first
+    cmds:
+      - task: inspect-dns-batching-prereqs
+      - cd '{{.APP_DIR}}' && go mod download github.com/klauspost/compress
+      - cd '{{.APP_DIR}}' && {{.GO_BUILD_ENV}} go test -c -o '{{.ROOT_DIR}}/.task/response-compression/app.test' .
+      - '{{.SSH}} {{.SSH_USER}}@{{.ENTRY_HOST}} ''mkdir -p /tmp/isucon-response-compression/samples'''
+      - '{{.RSYNC}} .task/response-compression/app.test {{.SSH_USER}}@{{.ENTRY_HOST}}:/tmp/isucon-response-compression/app.test'
+      - '{{.RSYNC}} .task/response-compression/samples/ {{.SSH_USER}}@{{.ENTRY_HOST}}:/tmp/isucon-response-compression/samples/'
+      - '{{.SSH}} {{.SSH_USER}}@{{.ENTRY_HOST}} ''ISUPIPE_COMPRESSION_SAMPLES=/tmp/isucon-response-compression/samples /tmp/isucon-response-compression/app.test -test.run "^$" -test.bench "^BenchmarkResponseGzip$" -test.benchtime 250ms -test.count 3 -test.cpu 1'''
+
+  collect-response-compression-samples:
+    desc: 稼働中APIの検索・timeline JSONを圧縮比較用に取得する（ベンチなし）
+    preconditions:
+      - sh: test ! -f '{{.RUN_STATE_FILE}}'
+        msg: active benchmark exists
+    deps: [build-smoke]
+    cmds:
+      - task: inspect-dns-batching-prereqs
+      - mkdir -p .task/response-compression/samples
+      - '{{.SSH}} {{.SSH_USER}}@{{.ENTRY_HOST}} ''mkdir -p {{.SMOKE_REMOTE_DIR}}'''
+      - '{{.RSYNC}} {{.SMOKE_TOOL_DIR}}/smoke {{.SSH_USER}}@{{.ENTRY_HOST}}:{{.SMOKE_REMOTE_DIR}}/smoke'
+      - '{{.SSH}} {{.SSH_USER}}@{{.ENTRY_HOST}} ''{{.SMOKE_REMOTE_DIR}}/smoke {{.SMOKE_ARGS}} -compression-samples-dir {{.SMOKE_REMOTE_DIR}}/compression-samples'''
+      - '{{.RSYNC}} {{.SSH_USER}}@{{.ENTRY_HOST}}:{{.SMOKE_REMOTE_DIR}}/compression-samples/ .task/response-compression/samples/'
+
   check-app-improvements:
     desc: アイコン・応答・同時予約・統計・モデレーションを実MySQLの一時検証DBで確認する（競技DBは変更しない）
     preconditions:
@@ -828,7 +858,7 @@ tasks:
           '
       - '{{.SSH}} {{.SSH_USER}}@{{.ENTRY_HOST}} ''mkdir -p {{.SMOKE_REMOTE_DIR}}'''
       - '{{.RSYNC}} {{.SMOKE_TOOL_DIR}}/smoke {{.SSH_USER}}@{{.ENTRY_HOST}}:{{.SMOKE_REMOTE_DIR}}/smoke'
-      - '{{.SSH}} {{.SSH_USER}}@{{.ENTRY_HOST}} ''{{.SMOKE_REMOTE_DIR}}/smoke {{.SMOKE_ARGS}} -icons-phase "{{.ICON_SMOKE_PHASE | default ""}}" -cross-ingress={{.CROSS_INGRESS_CHECK | default "false"}} -registration-phase "{{.REGISTRATION_SMOKE_PHASE | default ""}}" -references-phase "{{.REFERENCES_SMOKE_PHASE | default ""}}" -mutations-phase "{{.MUTATIONS_SMOKE_PHASE | default ""}}" -dns-server {{.DNS_IP}}:53 -dns-address {{.DNS_RECORD_ADDRESS}} -dns-common-address {{.DNS_COMMON_ADDRESS}}'''
+      - '{{.SSH}} {{.SSH_USER}}@{{.ENTRY_HOST}} ''{{.SMOKE_REMOTE_DIR}}/smoke {{.SMOKE_ARGS}} -icons-phase "{{.ICON_SMOKE_PHASE | default ""}}" -cross-ingress={{.CROSS_INGRESS_CHECK | default "false"}} -registration-phase "{{.REGISTRATION_SMOKE_PHASE | default ""}}" -references-phase "{{.REFERENCES_SMOKE_PHASE | default ""}}" -mutations-phase "{{.MUTATIONS_SMOKE_PHASE | default ""}}" -reservations-phase "{{.RESERVATIONS_SMOKE_PHASE | default ""}}" -dns-server {{.DNS_IP}}:53 -dns-address {{.DNS_RECORD_ADDRESS}} -dns-common-address {{.DNS_COMMON_ADDRESS}}'''
       - for: { var: NGINX_HOSTS }
         cmd: |
           {{if eq (.ICON_EDGE_CHECK | default "false") "true"}}

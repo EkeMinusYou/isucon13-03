@@ -29,10 +29,15 @@ func main() {
 	registrationPhase := flag.String("registration-phase", "", "write or read to check durable user and DNS registration")
 	referencesPhase := flag.String("references-phase", "", "write or read to check reference publication and reload")
 	mutationsPhase := flag.String("mutations-phase", "", "write or read to check durable WAL events and statistics")
+	reservationsPhase := flag.String("reservations-phase", "", "write or read to check durable WAL reservations")
+	flag.StringVar(&compressionSamplesDirectory, "compression-samples-dir", "", "save decoded response JSON for compression comparisons")
 	dnsServer := flag.String("dns-server", "", "authoritative DNS server address")
 	dnsAddress := flag.String("dns-address", "", "expected public HTTP ingress address")
 	dnsCommonAddress := flag.String("dns-common-address", "", "expected common-domain ingress address")
 	flag.Parse()
+	if *reservationsPhase != "" && *reservationsPhase != "write" && *reservationsPhase != "read" {
+		log.Fatal("reservations-phase must be write or read")
+	}
 	if *mutationsPhase != "" && *mutationsPhase != "write" && *mutationsPhase != "read" {
 		log.Fatal("mutations-phase must be write or read")
 	}
@@ -96,6 +101,16 @@ func main() {
 			log.Fatal(err)
 		}
 		fmt.Printf("%s: search/timeline gzip negotiation and decoded JSON passed\n", addr)
+		if *reservationsPhase != "" {
+			phase := *reservationsPhase
+			if ingress > 0 {
+				phase = "read"
+			}
+			if err := checkWALReservation(client, phase == "write"); err != nil {
+				log.Fatal(err)
+			}
+			fmt.Printf("%s: reservation %s, metadata, duplicate tags and references passed\n", addr, phase)
+		}
 		if *mutationsPhase != "" {
 			phase := *mutationsPhase
 			// Moderation changes shared state; later ingresses verify the first write.

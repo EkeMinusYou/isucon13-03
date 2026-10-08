@@ -286,8 +286,11 @@ func checkReservationAtomicity(t *testing.T, db *sqlx.DB, e *echo.Echo, store *s
 		start, start+3600, start+3600, start+7200, start+7200, start+10800, start-3600, start); err != nil {
 		t.Fatal(err)
 	}
+	dir := resetTestPosts(t, db)
+	posts := currentMutations.Load()
+	var err error
 	body := func(end int64) string {
-		data, err := json.Marshal(ReserveLivestreamRequest{StartAt: start, EndAt: end, Tags: []int64{2, 1}})
+		data, err := json.Marshal(ReserveLivestreamRequest{StartAt: start, EndAt: end, Tags: []int64{2, 1, 2}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -332,7 +335,7 @@ func checkReservationAtomicity(t *testing.T, db *sqlx.DB, e *echo.Echo, store *s
 			statuses[rec.Code]++
 			if rec.Code == http.StatusCreated {
 				var stream Livestream
-				if err := json.Unmarshal(rec.Body.Bytes(), &stream); err != nil || stream.ID == 0 || len(stream.Tags) != 2 {
+				if err := json.Unmarshal(rec.Body.Bytes(), &stream); err != nil || stream.ID == 0 || len(stream.Tags) != 3 {
 					t.Fatalf("reserved stream response: body=%s err=%v", rec.Body.String(), err)
 				}
 				reserved = stream
@@ -348,14 +351,31 @@ func checkReservationAtomicity(t *testing.T, db *sqlx.DB, e *echo.Echo, store *s
 	if err := db.Select(&slots, "SELECT slot FROM reservation_slots ORDER BY id"); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(slots, []int64{0, 0, 2, 7}) {
-		t.Fatalf("slot boundaries / rollback / overbooking: %v", slots)
+	if !reflect.DeepEqual(slots, []int64{1, 0, 2, 7}) {
+		t.Fatalf("SQL baseline changed on reservation: %v", slots)
 	}
 	for _, reload := range []bool{false, true} {
 		if reload {
+			if err := posts.close(); err != nil {
+				t.Fatal(err)
+			}
+			posts, err = openPostStore(context.Background(), db, dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			currentMutations.Store(posts)
 			if err := reloadReferences(context.Background()); err != nil {
 				t.Fatal(err)
 			}
+		}
+		posts.dataMu.RLock()
+		remaining := make(map[int64]int64)
+		for _, slot := range posts.reservationSlots {
+			remaining[slot.ID] = slot.Slot
+		}
+		posts.dataMu.RUnlock()
+		if !reflect.DeepEqual(remaining, map[int64]int64{1: 0, 2: 0, 3: 2, 4: 7}) {
+			t.Fatalf("effective slots reload=%v: %v", reload, remaining)
 		}
 		rec := improvementRequest(t, e, store, http.MethodGet, fmt.Sprintf("/api/livestream/%d", reserved.ID), "", 1)
 		var restored Livestream
@@ -372,4 +392,42 @@ func checkReservationAtomicity(t *testing.T, db *sqlx.DB, e *echo.Echo, store *s
 			t.Fatalf("reserved user index reload=%v status=%d body=%s err=%v", reload, rec.Code, rec.Body.String(), err)
 		}
 	}
+	// Invalid tags and oversized text must not consume any available slot.
+	for _, input := range []ReserveLivestreamRequest{
+		{StartAt: start + 7200, EndAt: start + 10800, Tags: []int64{999}},
+		{StartAt: start + 7200, EndAt: start + 10800, Title: strings.Repeat("a", 256)},
+	} {
+		data, _ := json.Marshal(input)
+		if rec := improvementRequest(t, e, store, http.MethodPost, "/api/livestream/reservation", string(data), 1); rec.Code != http.StatusInternalServerError {
+			t.Fatalf("invalid reservation status=%d body=%s", rec.Code, rec.Body.String())
+		}
+	}
+	// Occupying the only SQL connection proves reservation does not need MySQL.
+	db.SetMaxOpenConns(1)
+	conn, err := db.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	next := reservationSnapshot{Model: LivestreamModel{UserID: 1, StartAt: start + 7200, EndAt: start + 10800}, Tags: []int64{}}
+	err = posts.reserveLivestream(ctx, currentReferences.Load(), &next)
+	cancel()
+	conn.Close()
+	db.SetMaxOpenConns(10)
+	if err != nil || next.Model.ID <= reserved.ID {
+		t.Fatalf("reservation without SQL after restart: model=%+v err=%v", next.Model, err)
+	}
+	posts.dataMu.RLock()
+	_, _, rangeErr := posts.reservationRange(LivestreamModel{StartAt: start + 7200, EndAt: start + 10800})
+	var remaining int64
+	for _, slot := range posts.reservationSlots {
+		if slot.ID == 3 {
+			remaining = slot.Slot
+		}
+	}
+	posts.dataMu.RUnlock()
+	if rangeErr != nil || remaining != 1 {
+		t.Fatalf("invalid reservations consumed slots: remaining=%d err=%v", remaining, rangeErr)
+	}
+
 }
