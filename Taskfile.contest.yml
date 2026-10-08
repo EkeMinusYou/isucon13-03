@@ -9,11 +9,6 @@
 version: '3'
 
 tasks:
-  test-go-profiles:
-    desc: Go profileのRUN別停止・正常出力・採取上限をローカルで検証
-    dir: '{{.APP_DIR}}'
-    cmds: [go test -race -run '^TestProfile' ./...]
-
   deploy-shared-wal-dry:
     desc: 共通WAL配布と競技データ初期化の対象・順序を表示する
     deps: [gen, build-deployctl]

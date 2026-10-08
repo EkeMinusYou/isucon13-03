@@ -272,7 +272,7 @@ func main() {
 			e.Logger.Fatalf("failed to load references: %v", err)
 		}
 	}
-	if err := startProfileServer(180); err != nil {
+	if err := startMeasurement(); err != nil {
 		e.Logger.Fatalf("failed to start measurement listener: %v", err)
 	}
 

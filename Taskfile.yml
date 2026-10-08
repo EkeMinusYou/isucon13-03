@@ -122,9 +122,10 @@ vars:
   DEPLOYCTL_CONFIG: tools/contest/deployments.yaml
   # <<< contest values <<<
 
-  PROC_METRICS_DIR: tools/proc-metrics
-  MYSQL_METRICS_DIR: tools/mysql-metrics
-  NGINX_ONCPU_PROFILER_DIR: tools/nginx-oncpu-profiler
+  MEASUREMENT_DIR: tools/measurement
+  PROC_METRICS_DIR: '{{.MEASUREMENT_DIR}}/cmd/proc-metrics'
+  MYSQL_METRICS_DIR: '{{.MEASUREMENT_DIR}}/cmd/mysql-metrics'
+  NGINX_ONCPU_PROFILER_DIR: '{{.MEASUREMENT_DIR}}/cmd/nginx-oncpu-profiler'
   NGINX_ONCPU_HOST: '{{.ENTRY_HOST}}'
   NGINX_ONCPU_PROBE_URL: http://127.0.0.1/
   PPROF_BASE_URL: http://127.0.0.1:6060/debug/pprof
@@ -137,8 +138,8 @@ vars:
   PROFILE_TIMEOUT_SECONDS: '{{add (int .PROFILE_SECONDS) 15}}'
   PROFILE_READY_TIMEOUT_SECONDS: '15'
   NGINX_BACKEND_REPORT_DIR: tools/nginx-backend-report
-  JSON_METRICS_COLLECTOR_DIR: tools/json-metrics-collector
-  SQL_POOL_METRICS_DIR: tools/sql-pool-metrics
+  JSON_METRICS_COLLECTOR_DIR: '{{.MEASUREMENT_DIR}}/cmd/json-metrics-collector'
+  SQL_POOL_METRICS_DIR: '{{.MEASUREMENT_DIR}}/cmd/sql-pool-metrics'
   USER_TRANSITION_METRICS_DIR: tools/user-transition-metrics
   # The smoke flow itself is contest specific; only its location is fixed here.
   SMOKE_TOOL_DIR: tools/contest/smoke
@@ -290,35 +291,35 @@ tasks:
   build-proc-metrics:
     internal: true
     dir: '{{.PROC_METRICS_DIR}}'
-    sources: ['*.go', go.mod]
+    sources: ['*.go', ../../go.mod, ../../go.sum]
     generates: [proc-metrics]
     cmds: ['{{.GO_BUILD_ENV}} go build -trimpath -ldflags "-s -w" -o proc-metrics .']
 
   build-mysql-metrics:
     internal: true
     dir: '{{.MYSQL_METRICS_DIR}}'
-    sources: ['*.go', go.mod, go.sum]
+    sources: ['*.go', ../../go.mod, ../../go.sum]
     generates: [mysql-metrics]
     cmds: ['{{.GO_BUILD_ENV}} go build -trimpath -ldflags "-s -w" -o mysql-metrics .']
 
   build-nginx-oncpu-profiler:
     desc: optional nginx on-CPU profilerをTARGET_OS/TARGET_ARCHへビルド
     dir: '{{.NGINX_ONCPU_PROFILER_DIR}}'
-    sources: ['*.go', go.mod]
+    sources: ['*.go', ../../go.mod, ../../go.sum]
     generates: [nginx-oncpu-profiler]
     cmds: ['{{.GO_BUILD_ENV}} go build -trimpath -ldflags "-s -w" -o nginx-oncpu-profiler .']
 
   build-json-metrics-collector:
     desc: optional JSON snapshot metrics collectorをTARGET_OS/TARGET_ARCHへビルド
     dir: '{{.JSON_METRICS_COLLECTOR_DIR}}'
-    sources: ['*.go', go.mod]
+    sources: ['*.go', ../../go.mod, ../../go.sum]
     generates: [json-metrics-collector]
     cmds: ['{{.GO_BUILD_ENV}} go build -trimpath -ldflags "-s -w" -o json-metrics-collector .']
 
   build-sql-pool-metrics:
     internal: true
     dir: '{{.SQL_POOL_METRICS_DIR}}'
-    sources: ['*.go', go.mod]
+    sources: ['*.go', ../../go.mod, ../../go.sum]
     generates: [sql-pool-metrics]
     cmds: ['{{.GO_BUILD_ENV}} go build -trimpath -ldflags "-s -w" -o sql-pool-metrics .']
 
@@ -370,6 +371,20 @@ tasks:
     sources: ['*.go', internal/pprofimport/*.go, go.mod, go.sum, ../analysis/sources.yaml, ../analysis/schema/*.sql, ../contest/analysis-schema/*.sql]
     generates: [analysisctl]
     cmds: ['go build -trimpath -ldflags "-s -w" -o analysisctl .']
+
+  build-measurement:
+    desc: 共通moduleの全計測collectorをTARGET_OS/TARGET_ARCHへビルド
+    deps: [build-proc-metrics, build-mysql-metrics, build-sql-pool-metrics, build-json-metrics-collector, build-nginx-oncpu-profiler]
+
+  test-measurement:
+    desc: 共通計測moduleのprofile・endpoint・collectorをローカルで検証
+    dir: '{{.MEASUREMENT_DIR}}'
+    cmds: [go test -race ./...]
+
+  test-go-profiles:
+    desc: 共通moduleのGo profileのRUN別停止・正常出力・採取上限を検証
+    dir: '{{.MEASUREMENT_DIR}}'
+    cmds: [go test -race -run '^TestProfile' ./app]
 
   test-measurectl:
     desc: 計測制御ツールをローカルで検証

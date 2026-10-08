@@ -1,11 +1,10 @@
-package main
+package app
 
 import (
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
-	"net"
 	"net/http"
 	"net/http/pprof"
 	runtimepprof "runtime/pprof"
@@ -134,26 +133,4 @@ func profileHandlerWithStarters(maxSeconds int, startCPU, startFG samplingStarte
 		}))
 	}
 	return mux
-}
-
-func startProfileServer(maxSeconds int) error {
-	if maxSeconds < 1 || maxSeconds > 3600 {
-		return fmt.Errorf("profile duration limit must be between 1 and 3600 seconds")
-	}
-	listener, err := net.Listen("tcp", "127.0.0.1:6060")
-	if err != nil {
-		return fmt.Errorf("profile listener unavailable: %w", err)
-	}
-	server := &http.Server{
-		Handler:           measurementHandler(maxSeconds),
-		ReadHeaderTimeout: 5 * time.Second,
-		WriteTimeout:      time.Duration(maxSeconds+15) * time.Second,
-		IdleTimeout:       30 * time.Second,
-	}
-	go func() {
-		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
-			log.Printf("profile server stopped: %v", err)
-		}
-	}()
-	return nil
 }
