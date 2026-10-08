@@ -9,6 +9,18 @@
 version: '3'
 
 tasks:
+  extract-ng-collation:
+    desc: 実機MySQLからNG判定用の照合表を取得する（読み取りのみ）
+    cmds:
+      - task: inspect-dns-batching-prereqs
+      - mkdir -p .task/ng-collation
+      - cd '{{.APP_DIR}}' && {{.GO_BUILD_ENV}} go build -o '{{.ROOT_DIR}}/.task/ng-collation/extract' ../../tools/contest/collation/main.go
+      - '{{.RSYNC}} .task/ng-collation/extract {{.SSH_USER}}@{{.MYSQL_HOST}}:/tmp/isucon-ng-collation-extract'
+      - |
+        set -eu
+        {{.SSH}} {{.SSH_USER}}@{{.MYSQL_HOST}} 'sudo /tmp/isucon-ng-collation-extract' > .task/ng-collation/general_ci.bin
+        mv .task/ng-collation/general_ci.bin '{{.APP_DIR}}/ng_general_ci.bin'
+
   deploy-shared-wal-dry:
     desc: 共通WAL配布と競技データ初期化の対象・順序を表示する
     deps: [gen, build-deployctl]

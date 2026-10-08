@@ -19,12 +19,13 @@ const (
 )
 
 type postStream struct {
-	rowsMu    sync.RWMutex
-	gate      chan struct{}
-	comments  []LivecommentModel
-	reactions []ReactionModel
-	words     []NGWord
-	ngJSON    map[int64]string
+	rowsMu      sync.RWMutex
+	gate        chan struct{}
+	comments    []LivecommentModel
+	reactions   []ReactionModel
+	words       []NGWord
+	ngPatterns  map[int64][]*ngPattern
+	allPatterns []*ngPattern
 	// A published moderation has checked all rows against this owner's words.
 	ngCleanOwner int64
 	reports      []LivecommentReportModel
@@ -42,7 +43,6 @@ func (s *postStream) acquire(ctx context.Context) error {
 func (s *postStream) release() { <-s.gate }
 
 type postStore struct {
-	ngResults                    [16]boundedCache[ngPredicateKey, bool]
 	db                           *sqlx.DB
 	generation                   string
 	file                         *os.File

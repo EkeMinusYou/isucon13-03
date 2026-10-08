@@ -23,6 +23,19 @@ var responseGzipPool = sync.Pool{New: func() any {
 	return &responseGzip{writer: w}
 }}
 
+func compressResponseJSON(data []byte) ([]byte, error) {
+	state := responseGzipPool.Get().(*responseGzip)
+	state.buffer.Reset()
+	state.writer.Reset(&state.buffer)
+	defer func() {
+		if state.buffer.Cap() <= 128<<10 { responseGzipPool.Put(state) }
+	}()
+	if _, err := state.writer.Write(data); err != nil { return nil, err }
+	if err := state.writer.Close(); err != nil { return nil, err }
+	if state.buffer.Len() >= len(data) { return nil, nil }
+	return append([]byte(nil), state.buffer.Bytes()...), nil
+}
+
 // An explicit gzip exclusion overrides a wildcard. Invalid quality values
 // never opt a client into compression.
 func acceptsResponseGzip(headers []string) bool {

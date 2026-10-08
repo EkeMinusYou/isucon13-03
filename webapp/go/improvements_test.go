@@ -158,6 +158,7 @@ UPDATE livecomment_reports SET comment_created_at=livecomment_id;`); err != nil 
 	e.GET("/api/user/:username/icon", getIconHandler)
 	e.POST("/api/icon", postIconHandler)
 	t.Run("response_batching", func(t *testing.T) { checkResponseBatching(t, db, e, store) })
+	t.Run("ng_matcher", func(t *testing.T) { checkNGMatcherMySQL(t, db) })
 	t.Run("icons", func(t *testing.T) { checkIconsMySQL(t, db, e, store) })
 
 	checkUser := func(t *testing.T, name string, want UserStatistics) {

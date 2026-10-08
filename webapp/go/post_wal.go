@@ -52,9 +52,8 @@ type postRecord struct {
 func (r postRecord) cost() int64 {
 	switch r.Kind {
 	case "moderate":
-		// Include the per-author cached JSON, whose escaping can expand a byte
-		// to six bytes, as well as the stored NG word and map entry.
-		return int64(512 + 7*len(r.Text))
+		// Include the compiled LIKE tokens, stored word and author map entry.
+		return int64(512 + len(r.Text) + 4*(utf8.RuneCountInString(r.Text)+2))
 	case "exit":
 		return 0
 	case "icon":

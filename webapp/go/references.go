@@ -53,6 +53,7 @@ type referenceStore struct {
 	byUser      map[int64][]*LivestreamModel
 	byTag       map[int64][]*LivestreamModel
 	rowJSON     [16]boundedCache[rowJSONKey, []byte]
+	listJSON    [16]boundedCache[listResponseKey, *completedListResponse]
 }
 
 var currentReferences atomic.Pointer[referenceStore]

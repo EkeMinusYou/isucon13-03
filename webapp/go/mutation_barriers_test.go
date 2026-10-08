@@ -36,8 +36,7 @@ INSERT INTO livecomments (id,user_id,livestream_id,comment,tip,created_at) VALUE
 				}
 			}
 			dir := resetTestPosts(t, db)
-			// The native LIKE expression is independent of the optimized JSON_TABLE
-			// query and remains the oracle for case, accents, wildcards and escaping.
+			// The native LIKE expression is independent of the in-memory matcher and remains the oracle for case, accents, wildcards and escaping.
 			matches := func(text string, words []string) bool {
 				for _, word := range words {
 					var hit bool
@@ -89,7 +88,7 @@ INSERT INTO livecomments (id,user_id,livestream_id,comment,tip,created_at) VALUE
 				body, _ := json.Marshal(PostLivecommentRequest{Comment: text, Tip: 3})
 				for repeat := 0; repeat < 2; repeat++ {
 					if rec := improvementRequest(t, e, cookies, http.MethodPost, "/api/livestream/1/livecomment", string(body), 2); rec.Code != wantStatus {
-						t.Fatalf("cached NG predicate for %q: got=%d want=%d body=%s", text, rec.Code, wantStatus, rec.Body)
+						t.Fatalf("NG predicate for %q: got=%d want=%d body=%s", text, rec.Code, wantStatus, rec.Body)
 					}
 				}
 			}
@@ -98,15 +97,7 @@ INSERT INTO livecomments (id,user_id,livestream_id,comment,tip,created_at) VALUE
 				post(text)
 			}
 			moderate(`slash\_`)
-			post("slash_") // A previously accepted cache entry must not survive the new predicate.
-			cacheHits := uint64(0)
-			for i := range currentMutations.Load().ngResults {
-				hits, _, _ := currentMutations.Load().ngResults[i].stats()
-				cacheHits += hits
-			}
-			if cacheHits < 6 {
-				t.Fatalf("NG results were not reused: hits=%d", cacheHits)
-			}
+			post("slash_") // A previously accepted comment must be rejected by the new predicate.
 			before, _, err := currentMutations.Load().timeline(context.Background(), 1, -1, true)
 			if err != nil {
 				t.Fatal(err)

@@ -15,6 +15,7 @@
 | `analysis-schema/` | `tools/analysis/sources.yaml` | ベンチログの解釈をDuckDBのviewにするschema。エラー行の意味ビューとscore集計 |
 | `smoke/` | `task setup-smoke` | ベンチを使わず計測経路を確認する、当日のセッションフローのGo実装 |
 | `deployments.yaml` | `tools/deployctl` | 汎用graphをincludeし、解法固有のdeploymentとplanを置き換えるoverlay。追加seedもここに置く |
+| `collation/` | `task extract-ng-collation` | 実機MySQLの全Unicode文字の照合ウェイトを検証し、GoのNG判定用埋込表を取得する読み取り専用ツール |
 
 templateに置いてあるのは`bench-patterns.json`、`user-transition-routes.json`、
 `analysis-schema/bench-errors-semantic.sql`、`smoke/`のプレースホルダーだけである。setupで当日の形式へ書き換え、

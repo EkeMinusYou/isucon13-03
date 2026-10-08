@@ -165,7 +165,6 @@ func reserveLivestreamHandler(c echo.Context) error {
 }
 
 func searchLivestreamsHandler(c echo.Context) error {
-	ctx := c.Request().Context()
 	limit := -1
 	var tagID int64
 	keyTagName := c.QueryParam("tag")
@@ -186,25 +185,18 @@ func searchLivestreamsHandler(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusInternalServerError, "invalid negative limit")
 		}
 	}
-	models := currentReferences.Load().searchStreams(limit, tagID, keyTagName != "")
-	livestreams, err := livestreamResponseJSON(ctx, models)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fill livestream: "+err.Error())
+	key := listResponseKey{limit: limit}
+	if keyTagName != "" {
+		key.kind, key.id = 1, tagID
 	}
-	defer releaseResponseJSON(livestreams)
-	return writeCompressedResponseJSON(c, livestreams)
+	return currentReferences.Load().writeCompletedList(c, key)
 }
 
 func getMyLivestreamsHandler(c echo.Context) error {
 	if err := verifyUserSession(c); err != nil {
 		return err
 	}
-	models := currentReferences.Load().userStreams(sessionUserID(c))
-	livestreams, err := fillLivestreamResponses(c.Request().Context(), nil, models)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fill livestream: "+err.Error())
-	}
-	return c.JSON(http.StatusOK, livestreams)
+	return currentReferences.Load().writeCompletedList(c, listResponseKey{kind: 2, id: sessionUserID(c)})
 }
 
 func getUserLivestreamsHandler(c echo.Context) error {
@@ -220,11 +212,7 @@ func getUserLivestreamsHandler(c echo.Context) error {
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get user: "+err.Error())
 	}
-	livestreams, err := fillLivestreamResponses(ctx, nil, refs.userStreams(user.ID))
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fill livestream: "+err.Error())
-	}
-	return c.JSON(http.StatusOK, livestreams)
+	return refs.writeCompletedList(c, listResponseKey{kind: 2, id: user.ID})
 }
 
 // viewerテーブルの廃止

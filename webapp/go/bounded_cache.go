@@ -15,9 +15,16 @@ type boundedCache[K comparable, V any] struct {
 }
 
 func (c *boundedCache[K, V]) get(key K) (V, bool) {
+	return c.getValid(key, nil)
+}
+
+func (c *boundedCache[K, V]) getValid(key K, valid func(V) bool) (V, bool) {
 	c.mu.Lock()
 	value, ok := c.entries[key]
 	c.mu.Unlock()
+	if ok && valid != nil {
+		ok = valid(value)
+	}
 	if ok {
 		c.hits.Add(1)
 	} else {
@@ -50,6 +57,25 @@ func (c *boundedCache[K, V]) stats() (uint64, uint64, int) {
 	return c.hits.Load(), c.misses.Load(), bytes
 }
 
+// Replacing a stale value also releases its accounted payload. This keeps
+// mutable dependencies from accumulating versions under a stable request key.
+func (c *boundedCache[K, V]) replace(key K, value V, cost, budget int, retainedCost func(V) int) {
+	if cost > budget {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if previous, ok := c.entries[key]; ok {
+		c.bytes -= retainedCost(previous)
+	}
+	if c.entries == nil || c.bytes+cost > budget {
+		c.entries = make(map[K]V)
+		c.bytes = 0
+	}
+	c.entries[key] = value
+	c.bytes += cost
+}
+
 func addCacheMetrics[K comparable, V any](metrics map[string]any, prefix string, shards *[16]boundedCache[K, V]) {
 	var hits, misses uint64
 	var bytes int
@@ -63,16 +89,6 @@ func addCacheMetrics[K comparable, V any](metrics map[string]any, prefix string,
 	metrics[prefix+"_misses_total"] = misses
 	metrics[prefix+"_budget_bytes"] = bytes
 }
-
-func predicateShard(text string) uint32 {
-	h := uint32(2166136261)
-	for i := 0; i < len(text); i++ {
-		h = (h ^ uint32(text[i])) * 16777619
-	}
-	return h & 15
-}
-
-type ngPredicateKey struct{ words, text string }
 
 type rowJSONKey struct {
 	comment      LivecommentModel

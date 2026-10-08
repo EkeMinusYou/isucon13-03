@@ -70,12 +70,9 @@ func (s *postStore) submit(ctx context.Context, stream int64, op mutationOperati
 			return fmt.Errorf("comment exceeds VARCHAR(255)")
 		}
 		state.rowsMu.RLock()
-		wordsJSON := state.ngJSON[op.ownerID]
+		patterns := state.ngPatterns[op.ownerID]
+		spam := matchesNG(m.Comment, patterns)
 		state.rowsMu.RUnlock()
-		spam, err := s.matchesNG(ctx, m.Comment, wordsJSON)
-		if err != nil {
-			return err
-		}
 		if spam {
 			return echo.NewHTTPError(http.StatusBadRequest, "このコメントがスパム判定されました")
 		}
