@@ -34,12 +34,10 @@ GoアプリをLinux/amd64へクロスビルドし、isupipe-goを再起動した
 32MiBのキャッシュ保持とSHA256・グループ結合の仕事が増える。
 大型応答では圧縮辞書がグループ間で共有されないため、転送量が増える可能性が残る。
 
-`/debug/sql-pools`へ以下を追加した。
-
-- `timeline_gzip_cache_hits_total` / `timeline_gzip_cache_misses_total`
-- `timeline_gzip_cache_budget_bytes`（実際の保持量の見積り）
-- `timeline_gzip_cache_hit_bytes_total` / `timeline_gzip_cache_miss_bytes_total`
-  （再利用した／実際に圧縮した元JSONのバイト数）
+当初、この変更へgzipキャッシュの指標を無断で追加した。
+2026-10-09、ユーザーの指摘を受け、この会話で追加した行JSON・一覧応答・gzipの
+キャッシュ指標と計数処理を削除し、再デプロイした。
+詳細は[判断と変更履歴の調査](measurement/unauthorized-cache-metrics-20261009.md)を参照。
 
 ## 確認結果
 
@@ -65,4 +63,4 @@ GoアプリをLinux/amd64へクロスビルドし、isupipe-goを再起動した
 
 競技ベンチは実行していない。比較基準はgzip復元後のRUN `20261009-063406`、617052点。
 次のRUNで同一負荷窓のスコア、対象APIの完了数・時間・転送量、アプリとnginxのCPU、
-gzipの再利用バイト率・保持量を比較する。ヒット件数率だけで圧縮CPUの削減量を判断しない。
+既存の計測だけで比較する。追加計測はユーザーの明示的な指示なしに行わない。

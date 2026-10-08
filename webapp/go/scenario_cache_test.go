@@ -41,7 +41,7 @@ func TestStreamIndexesPreserveOrderAndDuplicates(t *testing.T) {
 }
 
 func TestRowJSONCacheReusesRowsAndRefreshesDependencies(t *testing.T) {
-	refs, _, user := responseJSONFixture(t)
+	_, _, user := responseJSONFixture(t)
 	ctx := context.Background()
 	model := LivecommentModel{ID: 1, UserID: 1, LivestreamID: 2, Comment: "<cached>", Tip: 7}
 	one, err := newResponseJSONBuilder(ctx).commentJSON(model)
@@ -51,10 +51,6 @@ func TestRowJSONCacheReusesRowsAndRefreshesDependencies(t *testing.T) {
 	two, err := newResponseJSONBuilder(ctx).commentJSON(model)
 	if err != nil || &one[0] != &two[0] {
 		t.Fatal("unchanged row was not reused", err)
-	}
-	hits, _, _ := refs.rowJSON[1].stats()
-	if hits != 1 {
-		t.Fatalf("cache hits=%d", hits)
 	}
 	before := append([]byte(nil), one...)
 	user.icon.hash.Store("changed")
@@ -84,7 +80,7 @@ func TestBoundedCacheEvictionAndOversizedEntries(t *testing.T) {
 	if string(retained) != "one" {
 		t.Fatal("eviction modified a reader's bytes")
 	}
-	_, _, budget := cache.stats()
+	budget := cache.bytes
 	if budget > 10 {
 		t.Fatalf("cache exceeded its budget: %d", budget)
 	}

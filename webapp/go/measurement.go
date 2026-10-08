@@ -33,13 +33,6 @@ func mutationSnapshot() app.Snapshot {
 		metrics["icon_wal_bytes_total"] = posts["icon_bytes"]
 		metrics["icon_wal_chunks_total"] = posts["icon_chunks"]
 	}
-	if refs := currentReferences.Load(); refs != nil {
-		addCacheMetrics(metrics, "row_json_cache", &refs.rowJSON)
-		addCacheMetrics(metrics, "list_response_cache", &refs.listJSON)
-		addCacheMetrics(metrics, "timeline_gzip_cache", &refs.timelineGzip)
-		metrics["timeline_gzip_cache_hit_bytes_total"] = refs.timelineGzipHitBytes.Load()
-		metrics["timeline_gzip_cache_miss_bytes_total"] = refs.timelineGzipMissBytes.Load()
-	}
 	return app.Snapshot{Metrics: metrics, Extra: map[string]any{"post_wal": posts}}
 }
 

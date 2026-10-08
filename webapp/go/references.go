@@ -55,8 +55,6 @@ type referenceStore struct {
 	rowJSON      [16]boundedCache[rowJSONKey, []byte]
 	listJSON     [16]boundedCache[listResponseKey, *completedListResponse]
 	timelineGzip [16]boundedCache[[32]byte, []byte]
-
-	timelineGzipHitBytes, timelineGzipMissBytes atomic.Uint64
 }
 
 var currentReferences atomic.Pointer[referenceStore]

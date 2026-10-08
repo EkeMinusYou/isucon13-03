@@ -16,12 +16,16 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-func timelineCacheStats(s *referenceStore) (hits, misses uint64, size int) {
+func timelineCacheMembers(s *referenceStore) (members map[[32]byte][]byte, size int) {
+	members = make(map[[32]byte][]byte)
 	for i := range s.timelineGzip {
-		h, m, b := s.timelineGzip[i].stats()
-		hits += h
-		misses += m
-		size += b
+		cache := &s.timelineGzip[i]
+		cache.mu.Lock()
+		for key, member := range cache.entries {
+			members[key] = member
+		}
+		size += cache.bytes
+		cache.mu.Unlock()
 	}
 	return
 }
@@ -86,20 +90,25 @@ func TestTimelineGzipGroupsReuseAndInvalidation(t *testing.T) {
 			Comment: fmt.Sprintf("comment %d 日本語 <>&", i), Tip: int64(i), CreatedAt: int64(1000 - i)}
 	}
 	old := checkGroupedTimeline(t, models, false)
-	h, m, _ := timelineCacheStats(refs)
-	if m < 2 {
+	members, _ := timelineCacheMembers(refs)
+	if len(members) < 2 {
 		t.Fatal("fixture did not exercise multiple gzip members")
 	}
 	checkGroupedTimeline(t, models, false)
-	h2, m2, _ := timelineCacheStats(refs)
-	if h2 <= h || m2 != m {
-		t.Fatal("unchanged timeline recompressed cached groups")
+	next, _ := timelineCacheMembers(refs)
+	if len(next) != len(members) {
+		t.Fatal("unchanged timeline created new gzip groups")
+	}
+	for key, member := range members {
+		if &next[key][0] != &member[0] {
+			t.Fatal("unchanged timeline replaced a cached member")
+		}
 	}
 	models = append([]LivecommentModel{{ID: 1001, UserID: 1, LivestreamID: 2, Comment: "prepended", CreatedAt: 1001}}, models...)
 	checkGroupedTimeline(t, models, false)
-	h3, m3, _ := timelineCacheStats(refs)
-	if h3 <= h2 || m3-m2 > 2 {
-		t.Fatalf("prepend invalidated interior groups: hits %d->%d misses %d->%d", h2, h3, m2, m3)
+	prepended, _ := timelineCacheMembers(refs)
+	if len(prepended)-len(next) > 2 {
+		t.Fatal("prepend invalidated interior groups")
 	}
 	// Moderation removes a row without changing the returned order.
 	models = append(models[:150:150], models[151:]...)
@@ -123,7 +132,7 @@ func TestTimelineGzipGroupsReuseAndInvalidation(t *testing.T) {
 	if bytes.Equal(old, updated) {
 		t.Fatal("changed timeline returned old gzip")
 	}
-	_, _, size := timelineCacheStats(refs)
+	_, size := timelineCacheMembers(refs)
 	if size > 16*timelineGzipBudget {
 		t.Fatal("gzip cache exceeded its budget")
 	}

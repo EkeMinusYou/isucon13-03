@@ -29,10 +29,8 @@ func (s *referenceStore) timelineGzipMember(data []byte) ([]byte, error) {
 	key := sha256.Sum256(data)
 	cache := &s.timelineGzip[key[0]&15]
 	if member, ok := cache.get(key); ok {
-		s.timelineGzipHitBytes.Add(uint64(len(data)))
 		return member, nil
 	}
-	s.timelineGzipMissBytes.Add(uint64(len(data)))
 	member, err := compressResponseMember(data)
 	if err != nil {
 		return nil, err
