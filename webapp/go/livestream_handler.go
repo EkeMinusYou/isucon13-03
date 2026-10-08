@@ -79,16 +79,10 @@ func reserveLivestreamHandler(c echo.Context) error {
 	// error already checked
 	userID := sessionUserID(c)
 
-	var req *ReserveLivestreamRequest
+	var req ReserveLivestreamRequest
 	if err := json.NewDecoder(c.Request().Body).Decode(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "failed to decode the request body as json")
 	}
-
-	tx, err := dbConn.BeginTxx(ctx, nil)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to begin transaction: "+err.Error())
-	}
-	defer tx.Rollback()
 
 	// 2023/11/25 10:00からの１年間の期間内であるかチェック
 	var (
@@ -100,6 +94,17 @@ func reserveLivestreamHandler(c echo.Context) error {
 	if (reserveStartAt.Equal(termEndAt) || reserveStartAt.After(termEndAt)) || (reserveEndAt.Equal(termStartAt) || reserveEndAt.Before(termStartAt)) {
 		return echo.NewHTTPError(http.StatusBadRequest, "bad reservation time range")
 	}
+
+	release, err := currentReferences.Load().reservationScheduler().acquire(ctx, userID, req.StartAt, req.EndAt)
+	if err != nil {
+		return mutationHTTPError(err)
+	}
+	defer release()
+	tx, err := dbConn.BeginTxx(ctx, nil)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to begin transaction: "+err.Error())
+	}
+	defer tx.Rollback()
 
 	// 予約枠をみて、予約が可能か調べる
 	// NOTE: 並列な予約のoverbooking防止にFOR UPDATEが必要
@@ -115,6 +120,7 @@ func reserveLivestreamHandler(c echo.Context) error {
 			if err := tx.Rollback(); err != nil {
 				return echo.NewHTTPError(http.StatusInternalServerError, "failed to rollback reservation: "+err.Error())
 			}
+			release()
 			if err := waitNonScoringRequest(ctx); err != nil {
 				return mutationHTTPError(err)
 			}
@@ -162,6 +168,7 @@ func reserveLivestreamHandler(c echo.Context) error {
 	if err := currentReferences.Load().commitLivestream(ctx, tx, *livestreamModel, req.Tags); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to commit: "+err.Error())
 	}
+	release()
 	livestream, err := fillLivestreamResponse(ctx, tx, *livestreamModel)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fill livestream: "+err.Error())
