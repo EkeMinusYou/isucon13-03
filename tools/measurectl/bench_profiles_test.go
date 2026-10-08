@@ -40,6 +40,7 @@ before-bench)
   echo 20260901-120000 > "$ISUCON_BENCH_RUN_STATE_FILE"
   ;;
 profiles-collect)
+  echo PROFILE_CAPTURE_STARTED
   touch "$ISUCON_TEST_DIR/sampling"
   i=0
   until test -f "$ISUCON_TEST_DIR/stop-requested"; do
@@ -48,9 +49,11 @@ profiles-collect)
   done
   sleep 0.05
   touch "$ISUCON_TEST_DIR/profile-done"
+  echo PROFILE_CAPTURE_COMPLETED
   exit "$ISUCON_TEST_PROFILE_EXIT"
   ;;
 profiles-stop)
+  echo PROFILE_STOP_REQUESTED
   if [ "$ISUCON_TEST_READY_EXIT" = 0 ]; then
     grep -q BENCHMARK_END "$run/bench.log" || exit 93
   fi
@@ -156,6 +159,15 @@ esac
 			}
 			if strings.Count(string(calls), "profiles-stop") != 1 {
 				t.Fatalf("stop notification must happen once: %s", calls)
+			}
+			profileLog, err := os.ReadFile(filepath.Join(tmp, "runs", "20260901-120000", "profile-collection.log"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, marker := range []string{"PROFILE_CAPTURE_STARTED", "PROFILE_STOP_REQUESTED", "PROFILE_CAPTURE_COMPLETED"} {
+				if !strings.Contains(string(profileLog), marker) {
+					t.Fatalf("concurrent profile output lost %s: %s", marker, profileLog)
+				}
 			}
 			if tc.readyExit == 0 && strings.Count(string(calls), "profiles-ready") != 2 {
 				t.Fatalf("readiness was not checked again after the lead-in: %s", calls)

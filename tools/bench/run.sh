@@ -71,7 +71,9 @@ trap 'exit 130' INT
 trap 'exit 143' HUP TERM
 
 if [ "$profiles_enabled" = true ]; then
-  task profiles-collect > "$run_dir/profile-collection.log" 2>&1 &
+  : > "$run_dir/profile-collection.log"
+  # Both collection and stop notification append so neither overwrites output.
+  task profiles-collect >> "$run_dir/profile-collection.log" 2>&1 &
   profile_pid=$!
   # Do not launch a benchmark until every app is sampling for this RUN.
   task profiles-ready
