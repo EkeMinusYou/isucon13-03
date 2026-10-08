@@ -908,7 +908,7 @@ tasks:
       - go test -race -run '^TestDNS' -count=1 ./...
 
   check-dns-linux:
-    desc: 実ホストのLinuxで同期・復元・強制終了を検証する（競技DBとDNSには接続しない）
+    desc: 実ホストのLinuxで非同期同期・通常終了後の復元を検証する（競技DBとDNSには接続しない）
     cmds:
       - mkdir -p .task/go-dns
       - cd '{{.APP_DIR}}' && {{.GO_BUILD_ENV}} go test -c -o '{{.ROOT_DIR}}/.task/go-dns/dns.test' .

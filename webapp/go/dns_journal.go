@@ -160,6 +160,9 @@ func (d *dnsControl) recover() error {
 	return nil
 }
 func (d *dnsControl) reset() dnsReply {
+	// A generation change waits for an in-flight sync before replacing its file.
+	d.syncMu.Lock()
+	defer d.syncMu.Unlock()
 	d.mu.RLock()
 	epoch := d.state.epoch
 	serial := d.state.serial() + 1
@@ -219,11 +222,59 @@ func (d *dnsControl) reset() dnsReply {
 	state.ready = true
 	d.mu.Lock()
 	d.state = state
+	d.syncedSeq = 0
 	d.mu.Unlock()
+	d.syncErr = nil
 	if old != nil {
 		old.Close()
 	}
 	return dnsReply{Epoch: epoch, Serial: serial, status: 200}
+}
+
+// Registration publication never waits on this worker. Close drains it after
+// the writer has completed every accepted file write.
+func (d *dnsControl) syncJournalLoop() {
+	defer close(d.syncDone)
+	ticker := time.NewTicker(dnsSyncInterval)
+	defer ticker.Stop()
+	for {
+		closing := false
+		select {
+		case _, ok := <-d.syncWake:
+			closing = !ok
+		case <-ticker.C:
+		}
+		d.syncJournal()
+		if closing {
+			return
+		}
+	}
+}
+
+func (d *dnsControl) syncJournal() {
+	d.syncMu.Lock()
+	defer d.syncMu.Unlock()
+	if d.syncErr != nil || d.file == nil {
+		return
+	}
+	d.mu.RLock()
+	seq, synced := d.state.seq, d.syncedSeq
+	d.mu.RUnlock()
+	if seq == synced {
+		return
+	}
+	start := time.Now()
+	err := d.ops.sync(d.file)
+	d.counters.syncNanos.Add(uint64(time.Since(start)))
+	d.counters.syncs.Add(1)
+	if err != nil {
+		d.syncErr = fmt.Errorf("DNS journal sync: %w", err)
+		d.fail()
+		return
+	}
+	d.mu.Lock()
+	d.syncedSeq = seq
+	d.mu.Unlock()
 }
 func (d *dnsControl) resetError(err error) dnsReply {
 	d.fail()

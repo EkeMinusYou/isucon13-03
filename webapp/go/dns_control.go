@@ -20,6 +20,8 @@ import (
 
 const dnsZone = "u.isucon.dev"
 const dnsSuffix = dnsZone + "."
+const dnsSyncInterval = 100 * time.Millisecond
+const dnsSyncBytes = 64 << 10
 
 var dnsGeneration atomic.Uint64
 var dnsHTTP = &http.Client{Timeout: 8 * time.Second}
@@ -60,17 +62,22 @@ type dnsCounters struct {
 	sendErrors atomic.Uint64
 }
 type dnsControl struct {
-	mu       sync.RWMutex
-	state    dnsState
-	base     *dnsBase
-	path     string
-	file     *os.File
-	ops      dnsFileOps
-	queue    chan dnsUpdate
-	life     sync.RWMutex
-	closed   bool
-	writer   sync.WaitGroup
-	counters dnsCounters
+	mu        sync.RWMutex
+	state     dnsState
+	base      *dnsBase
+	path      string
+	file      *os.File
+	ops       dnsFileOps
+	queue     chan dnsUpdate
+	life      sync.RWMutex
+	closed    bool
+	writer    sync.WaitGroup
+	counters  dnsCounters
+	syncMu    sync.Mutex
+	syncWake  chan struct{}
+	syncDone  chan struct{}
+	syncedSeq uint64 // Protected by mu; reset and publication use the same generation.
+	syncErr   error  // Protected by syncMu.
 }
 
 func validDNSUser(name string) bool {
@@ -130,11 +137,13 @@ func newDNSControl(base []byte, path string, address, commonAddress net.IP) (*dn
 		return nil, fmt.Errorf("invalid common ingress IPv4 address")
 	}
 	copy(initial.commonAddress[:], commonAddress.To4())
-	d := &dnsControl{base: initial, path: path, ops: defaultDNSFileOps(), queue: make(chan dnsUpdate, 128)}
+	d := &dnsControl{base: initial, path: path, ops: defaultDNSFileOps(), queue: make(chan dnsUpdate, 128), syncWake: make(chan struct{}, 1), syncDone: make(chan struct{})}
 	d.state = newDNSState(initial)
 	if err := d.recover(); err != nil {
 		return nil, err
 	}
+	d.syncedSeq = d.state.seq
+	go d.syncJournalLoop()
 	d.writer.Add(1)
 	go d.run()
 	return d, nil
@@ -251,12 +260,6 @@ func (d *dnsControl) registerBatch(batch []dnsUpdate) {
 			encodeDNSRecord(data[i*dnsRecordSize:(i+1)*dnsRecordSize], seq+uint64(i)+1, name)
 		}
 		err := d.ops.write(d.file, data)
-		if err == nil {
-			start := time.Now()
-			err = d.ops.sync(d.file)
-			d.counters.syncNanos.Add(uint64(time.Since(start)))
-			d.counters.syncs.Add(1)
-		}
 		if err != nil {
 			d.fail()
 			for i := range results {
@@ -274,8 +277,15 @@ func (d *dnsControl) registerBatch(batch []dnsUpdate) {
 			d.state.dynamic = dynamic
 			d.state.memory = memory
 			serial = d.state.serial()
+			wake := (d.state.seq-d.syncedSeq)*dnsRecordSize >= dnsSyncBytes
 			d.mu.Unlock()
 			d.counters.updates.Add(uint64(len(names)))
+			if wake {
+				select {
+				case d.syncWake <- struct{}{}:
+				default:
+				}
+			}
 		}
 	}
 	for i, r := range batch {
@@ -316,15 +326,20 @@ func (d *dnsControl) close() error {
 	close(d.queue)
 	d.life.Unlock()
 	d.writer.Wait()
+	close(d.syncWake)
+	<-d.syncDone
+	err := d.syncErr
 	if d.file != nil {
-		return d.file.Close()
+		if e := d.file.Close(); err == nil {
+			err = e
+		}
 	}
-	return nil
+	return err
 }
 func (d *dnsControl) status() map[string]any {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
-	return map[string]any{"ready": d.state.ready && !d.state.failed, "failed": d.state.failed, "epoch": d.state.epoch, "serial": d.state.serial(), "dynamic_names": d.state.dynamic, "entries": len(d.state.names), "model_budget_bytes": d.state.memory, "log_bytes": dnsHeaderSize + int64(d.state.seq)*dnsRecordSize, "updates": d.counters.updates.Load(), "syncs": d.counters.syncs.Load(), "sync_ns": d.counters.syncNanos.Load(), "queries": d.counters.queries.Load(), "answers": d.counters.answers.Load(), "nxdomain": d.counters.nxdomain.Load(), "nodata": d.counters.nodata.Load(), "send_errors": d.counters.sendErrors.Load()}
+	return map[string]any{"ready": d.state.ready && !d.state.failed, "failed": d.state.failed, "epoch": d.state.epoch, "serial": d.state.serial(), "dynamic_names": d.state.dynamic, "entries": len(d.state.names), "model_budget_bytes": d.state.memory, "log_bytes": dnsHeaderSize + int64(d.state.seq)*dnsRecordSize, "published_seq": d.state.seq, "synced_seq": d.syncedSeq, "pending_bytes": (d.state.seq - d.syncedSeq) * dnsRecordSize, "updates": d.counters.updates.Load(), "syncs": d.counters.syncs.Load(), "sync_ns": d.counters.syncNanos.Load(), "queries": d.counters.queries.Load(), "answers": d.counters.answers.Load(), "nxdomain": d.counters.nxdomain.Load(), "nodata": d.counters.nodata.Load(), "send_errors": d.counters.sendErrors.Load()}
 }
 func (d *dnsControl) handler(allowed map[string]bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -384,7 +399,11 @@ func runDNSControl() error {
 	if err != nil {
 		return err
 	}
-	defer d.close()
+	defer func() {
+		if err := d.close(); err != nil {
+			fmt.Fprintf(os.Stderr, "DNS journal shutdown: %v\n", err)
+		}
+	}()
 	httpAddr := os.Getenv("ISUPIPE_DNS_LISTEN")
 	own, _, err := net.SplitHostPort(httpAddr)
 	if err != nil {

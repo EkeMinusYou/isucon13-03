@@ -120,10 +120,14 @@ func main() {
 			fmt.Printf("%s: nginx direct 304, current image and logged session identity passed\n", addr)
 		}
 		if *registrationPhase != "" {
-			if err := checkRegistration(client, *dnsServer, *dnsAddress, *registrationPhase == "write"); err != nil {
+			phase := *registrationPhase
+			if ingress > 0 && phase == "write" {
+				phase = "read"
+			}
+			if err := checkRegistration(client, *dnsServer, *dnsAddress, phase == "write"); err != nil {
 				log.Fatal(err)
 			}
-			fmt.Printf("%s: user/DNS registration %s, login and subdomain HTTPS passed\n", addr, *registrationPhase)
+			fmt.Printf("%s: user/DNS registration %s, login and subdomain HTTPS passed\n", addr, phase)
 		}
 		if *referencesPhase != "" {
 			if err := checkReferenceModels(client, *referencesPhase == "write"); err != nil {

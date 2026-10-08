@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -110,7 +109,7 @@ func dnsPacket(t *testing.T, d *dnsControl, query dnsmessage.Message) dnsmessage
 	}
 	return result
 }
-func TestDNSPublishAfterSyncAndRecovery(t *testing.T) {
+func TestDNSPublishBeforeSyncAndRecovery(t *testing.T) {
 	d := testDNS(t)
 	if r := dnsQuestion(t, d, "pipe."+dnsSuffix, dnsmessage.TypeA); r.RCode != dnsmessage.RCodeServerFailure {
 		t.Fatal("uninitialized DNS answered")
@@ -120,33 +119,45 @@ func TestDNSPublishAfterSyncAndRecovery(t *testing.T) {
 		t.Fatal(initial)
 	}
 	entered, release := make(chan struct{}), make(chan struct{})
+	d.syncMu.Lock()
 	syncFile := d.ops.sync
-	d.ops.sync = func(f *os.File) error { close(entered); <-release; return syncFile(f) }
-	done := make(chan dnsReply, 1)
-	go func() {
-		r, _ := d.enqueue(context.Background(), dnsUpdate{Name: "Child.Parent", Epoch: initial.Epoch})
-		done <- r
-	}()
+	var enteredOnce, releaseOnce sync.Once
+	d.ops.sync = func(f *os.File) error {
+		enteredOnce.Do(func() { close(entered); <-release })
+		return syncFile(f)
+	}
+	d.syncMu.Unlock()
+	t.Cleanup(func() { releaseOnce.Do(func() { close(release) }) })
+	result := dnsCall(t, d, dnsUpdate{Name: "Child.Parent", Epoch: initial.Epoch})
 	select {
 	case <-entered:
 	case <-time.After(3 * time.Second):
 		t.Fatal("sync not reached")
 	}
 	before := dnsQuestion(t, d, "child.parent."+dnsSuffix, dnsmessage.TypeA)
-	if before.RCode != dnsmessage.RCodeNameError {
-		t.Error("published before durable sync")
+	if before.RCode != 0 || len(before.Answers) != 1 {
+		t.Error("registration unavailable during sync")
 	}
-	select {
-	case <-done:
-		t.Error("acknowledged before durable sync")
-	default:
+	d.mu.RLock()
+	published, synced := d.state.seq, d.syncedSeq
+	d.mu.RUnlock()
+	if published != 1 || synced != 0 {
+		t.Errorf("unexpected sync boundary: published=%d synced=%d", published, synced)
 	}
-	close(release)
-	result := <-done
-	d.ops.sync = syncFile
 	if result.status != 200 || result.Serial != initial.Serial+1 {
 		t.Fatal(result)
 	}
+	result = dnsCall(t, d, dnsUpdate{Name: "during-sync", Epoch: initial.Epoch})
+	if result.status != 200 || result.Serial != initial.Serial+2 {
+		t.Fatal("additional registration waited for sync", result)
+	}
+	if r := dnsQuestion(t, d, "during-sync."+dnsSuffix, dnsmessage.TypeA); len(r.Answers) != 1 {
+		t.Fatal("additional registration unavailable during sync")
+	}
+	releaseOnce.Do(func() { close(release) })
+	d.syncMu.Lock()
+	d.ops.sync = syncFile
+	d.syncMu.Unlock()
 	after := dnsQuestion(t, d, "CHILD.PARENT."+dnsSuffix, dnsmessage.TypeA)
 	if after.RCode != 0 || len(after.Answers) != 1 || after.Answers[0].Header.TTL != 300 {
 		t.Fatal(after)
@@ -190,6 +201,7 @@ func TestDNSIOFailures(t *testing.T) {
 		t.Run(failure, func(t *testing.T) {
 			d := testDNS(t)
 			initial := dnsCall(t, d, dnsUpdate{Reset: true})
+			d.syncMu.Lock()
 			ops := d.ops
 			switch failure {
 			case "write":
@@ -201,17 +213,26 @@ func TestDNSIOFailures(t *testing.T) {
 			case "directory":
 				d.ops.syncDir = func(string) error { return errors.New("injected directory sync") }
 			}
+			d.syncMu.Unlock()
 			request := dnsUpdate{Name: "failed", Epoch: initial.Epoch}
 			if failure == "rename" || failure == "directory" {
 				request = dnsUpdate{Reset: true}
 			}
-			if r := dnsCall(t, d, request); r.status != 503 {
-				t.Fatal("failure acknowledged", r)
+			result := dnsCall(t, d, request)
+			if failure == "sync" {
+				if result.status != 200 {
+					t.Fatal("append not acknowledged before background sync", result)
+				}
+				d.syncJournal()
+			} else if result.status != 503 {
+				t.Fatal("failure acknowledged", result)
 			}
 			if r := dnsQuestion(t, d, "pipe."+dnsSuffix, dnsmessage.TypeA); r.RCode != dnsmessage.RCodeServerFailure {
 				t.Fatal("failed DNS remained available")
 			}
+			d.syncMu.Lock()
 			d.ops = ops
+			d.syncMu.Unlock()
 			if r := dnsCall(t, d, dnsUpdate{Name: "another", Epoch: initial.Epoch}); r.status != 503 {
 				t.Fatal("failed state accepted registration")
 			}
@@ -366,44 +387,24 @@ func TestDNSOfficialZone(t *testing.T) {
 		t.Fatal("unsupported base record ignored")
 	}
 }
-func TestDNSCrashRecovery(t *testing.T) {
+func TestDNSNormalProcessRestart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "journal")
-	cmd := exec.Command(os.Args[0], "-test.run=^TestDNSCrashHelper$")
-	cmd.Env = append(os.Environ(), "DNS_CRASH_TEST_PATH="+path)
-	output, err := cmd.StdoutPipe()
-	if err != nil {
-		t.Fatal(err)
+	cmd := exec.Command(os.Args[0], "-test.run=^TestDNSNormalStopHelper$")
+	cmd.Env = append(os.Environ(), "DNS_RESTART_TEST_PATH="+path)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("normal stop: %v\n%s", err, output)
 	}
-	cmd.Stderr = os.Stderr
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
-	defer func() { cmd.Process.Kill(); cmd.Wait() }()
-	done := make(chan string, 1)
-	go func() { line, _ := bufio.NewReader(output).ReadString('\n'); done <- line }()
-	select {
-	case line := <-done:
-		if line != "durable\n" {
-			t.Fatal(line)
-		}
-	case <-time.After(10 * time.Second):
-		t.Fatal("child not ready")
-	}
-	if err := cmd.Process.Kill(); err != nil {
-		t.Fatal(err)
-	}
-	cmd.Wait()
 	d, err := newDNSControl([]byte(dnsTestBase), path, net.ParseIP("192.0.2.1"), net.ParseIP("192.0.2.1"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer d.close()
-	if r := dnsQuestion(t, d, "crash-durable."+dnsSuffix, dnsmessage.TypeA); len(r.Answers) != 1 {
-		t.Fatal("SIGKILL lost acknowledged registration")
+	if r := dnsQuestion(t, d, "restart-persisted."+dnsSuffix, dnsmessage.TypeA); len(r.Answers) != 1 {
+		t.Fatal("normal restart lost acknowledged registration")
 	}
 }
-func TestDNSCrashHelper(t *testing.T) {
-	path := os.Getenv("DNS_CRASH_TEST_PATH")
+func TestDNSNormalStopHelper(t *testing.T) {
+	path := os.Getenv("DNS_RESTART_TEST_PATH")
 	if path == "" {
 		return
 	}
@@ -412,27 +413,31 @@ func TestDNSCrashHelper(t *testing.T) {
 		t.Fatal(err)
 	}
 	epoch := dnsCall(t, d, dnsUpdate{Reset: true}).Epoch
-	if r := dnsCall(t, d, dnsUpdate{Name: "crash-durable", Epoch: epoch}); r.status != 200 {
+	if r := dnsCall(t, d, dnsUpdate{Name: "restart-persisted", Epoch: epoch}); r.status != 200 {
 		t.Fatal(r)
 	}
-	fmt.Println("durable")
-	select {}
+	if err := d.close(); err != nil {
+		t.Fatal(err)
+	}
 }
 
-func TestDNSResetQueueBoundaryAndCanceledRequest(t *testing.T) {
+func TestDNSResetQueueBoundaryDuringSync(t *testing.T) {
 	d := testDNS(t)
 	initial := dnsCall(t, d, dnsUpdate{Reset: true})
 	entered, release := make(chan struct{}), make(chan struct{})
+	d.syncMu.Lock()
 	syncFile := d.ops.sync
-	var once sync.Once
+	var once, releaseOnce sync.Once
 	d.ops.sync = func(f *os.File) error { once.Do(func() { close(entered); <-release }); return syncFile(f) }
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan error, 1)
-	go func() { _, err := d.enqueue(ctx, dnsUpdate{Name: "accepted", Epoch: initial.Epoch}); done <- err }()
-	<-entered
-	cancel()
-	if err := <-done; !errors.Is(err, context.Canceled) {
-		t.Fatal(err)
+	d.syncMu.Unlock()
+	t.Cleanup(func() { releaseOnce.Do(func() { close(release) }) })
+	if r := dnsCall(t, d, dnsUpdate{Name: "accepted", Epoch: initial.Epoch}); r.status != 200 {
+		t.Fatal(r)
+	}
+	select {
+	case <-entered:
+	case <-time.After(3 * time.Second):
+		t.Fatal("sync not reached")
 	}
 	reset := dnsUpdate{Reset: true, done: make(chan dnsReply, 1)}
 	stale := dnsUpdate{Name: "late", Epoch: initial.Epoch, done: make(chan dnsReply, 1)}
@@ -440,7 +445,12 @@ func TestDNSResetQueueBoundaryAndCanceledRequest(t *testing.T) {
 	d.queue <- reset
 	d.queue <- stale
 	d.queue <- current
-	close(release)
+	select {
+	case <-reset.done:
+		t.Fatal("reset replaced a journal during sync")
+	default:
+	}
+	releaseOnce.Do(func() { close(release) })
 	if r := <-reset.done; r.status != 200 || r.Epoch != initial.Epoch+1 {
 		t.Fatal(r)
 	}
@@ -451,7 +461,7 @@ func TestDNSResetQueueBoundaryAndCanceledRequest(t *testing.T) {
 		t.Fatal(r)
 	}
 	if d.counters.updates.Load() != 2 {
-		t.Fatal("accepted request canceled durable write")
+		t.Fatal("accepted registration lost")
 	}
 	if r := dnsQuestion(t, d, "accepted."+dnsSuffix, dnsmessage.TypeA); r.RCode != dnsmessage.RCodeNameError {
 		t.Fatal("old registration survived reset")
@@ -473,6 +483,7 @@ func TestDNSBatchDuplicatesAndCapacity(t *testing.T) {
 			t.Fatal(result)
 		}
 	}
+	d.syncJournal()
 	if d.counters.syncs.Load() != 1 || d.counters.updates.Load() != 3 {
 		t.Fatal("batch did not deduplicate and share sync")
 	}
@@ -495,6 +506,7 @@ func TestDNSBatchDuplicatesAndCapacity(t *testing.T) {
 				d.state.memory = dnsMemoryLimit
 			case "journal":
 				d.state.seq = dnsJournalLimit / dnsRecordSize
+				d.syncedSeq = d.state.seq
 			}
 			d.mu.Unlock()
 			if r := dnsCall(t, d, dnsUpdate{Name: "overcapacity", Epoch: epoch}); r.status != 503 {

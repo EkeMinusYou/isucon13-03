@@ -452,7 +452,7 @@ func writePostBytes(writer io.Writer, data []byte) error {
 	return nil
 }
 
-const postSyncInterval = 10 * time.Millisecond
+const postSyncInterval = 100 * time.Millisecond
 const postSyncBytes = 1 << 20
 
 // Sync retains only a boundary, never request channels or image payloads.
