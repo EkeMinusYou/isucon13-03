@@ -1,0 +1,9 @@
+upstream_addr	upstream_status	cache_status	requests	status_2xx	status_3xx	status_4xx	status_5xx	status_other	response_time_sum_ms	response_time_avg_ms	upstream_time_sum_ms	upstream_time_avg_ms
+172.31.34.190:8080	200	NONE	130354	130354	0	0	0	0	162144.000	1.244	163076.000	1.251
+172.31.34.190:8080	201	NONE	84655	84655	0	0	0	0	151966.000	1.795	145152.000	1.715
+172.31.34.190:8080	400	NONE	3981	0	0	3981	0	0	10217.000	2.566	10132.000	2.545
+172.31.34.190:8080	401	NONE	2	0	0	2	0	0	3.000	1.500	4.000	2.000
+172.31.34.190:8080	500	NONE	1	0	0	0	1	0	2.000	2.000	4.000	4.000
+NONE	NONE	NONE	366951	0	366951	0	0	0	0.000	0.000	0.000	0.000
+unix:/run/isupipe-icons/http.sock	200	NONE	374	374	0	0	0	0	397.000	1.061	384.000	1.027
+unix:/run/isupipe-icons/http.sock	304	NONE	8818	0	8818	0	0	0	8812.000	0.999	8852.000	1.004
