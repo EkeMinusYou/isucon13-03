@@ -271,6 +271,11 @@ tasks:
     cmds:
       - cd '{{.APP_DIR}}' && go test -race -v ./... -run 'Test(CreatedRowJSON|ResponseJSON|TimelineGzip)'
 
+  check-request-pacing-local:
+    desc: リクエスト待機追加後のGoアプリをローカルでrace検証する
+    cmds:
+      - cd '{{.APP_DIR}}' && go test -race ./...
+
   inspect-fast-paths:
     desc: 配布対象・計測停止と共有セッション署名鍵の一致を確認する
     cmds:

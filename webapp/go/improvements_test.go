@@ -210,6 +210,7 @@ UPDATE livecomment_reports SET comment_created_at=livecomment_id;`); err != nil 
 		checkLivestream(t, 1, LivestreamStatistics{Rank: 3, ViewersCount: 2, TotalReactions: 3, TotalReports: 2, MaxTip: 3})
 	})
 	t.Run("reservation_atomicity", func(t *testing.T) { checkReservationAtomicity(t, db, e, store) })
+	t.Run("request_pacing", func(t *testing.T) { checkRequestPacing(t, db, e, store) })
 	for _, word := range []string{"café", "a_b", "q%r", `slash\_`, ""} {
 		t.Run("moderation_"+word, func(t *testing.T) {
 			if _, err := db.Exec("DELETE FROM ng_words; DELETE FROM livecomments; INSERT INTO ng_words (user_id, livestream_id, word, created_at) VALUES (1, 1, 'legacy', 0)"); err != nil {

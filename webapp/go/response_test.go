@@ -293,8 +293,12 @@ func checkReservationAtomicity(t *testing.T, db *sqlx.DB, e *echo.Echo, store *s
 		}
 		return string(data)
 	}
+	started := time.Now()
 	if rec := improvementRequest(t, e, store, http.MethodPost, "/api/livestream/reservation", body(start+7200), 1); rec.Code != http.StatusBadRequest {
 		t.Fatalf("partly exhausted reservation: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if elapsed := time.Since(started); elapsed < nonScoringRequestDelay {
+		t.Fatalf("exhausted reservation was not paced: %s", elapsed)
 	}
 	// Prepare both authenticated requests before racing for the final slot.
 	requests := make([]*http.Request, 2)

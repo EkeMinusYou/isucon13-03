@@ -112,6 +112,12 @@ func reserveLivestreamHandler(c echo.Context) error {
 	for _, slot := range slots {
 		c.Logger().Infof("%d ~ %d予約枠の残数 = %d\n", slot.StartAt, slot.EndAt, slot.Slot)
 		if slot.Slot < 1 {
+			if err := tx.Rollback(); err != nil {
+				return echo.NewHTTPError(http.StatusInternalServerError, "failed to rollback reservation: "+err.Error())
+			}
+			if err := waitNonScoringRequest(ctx); err != nil {
+				return mutationHTTPError(err)
+			}
 			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("予約期間 %d ~ %dに対して、予約区間 %d ~ %dが予約できません", termStartAt.Unix(), termEndAt.Unix(), req.StartAt, req.EndAt))
 		}
 	}

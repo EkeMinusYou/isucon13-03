@@ -164,6 +164,11 @@ func postLivecommentHandler(c echo.Context) error {
 	if err != nil {
 		return echo.NewHTTPError(http.StatusNotFound, "livestream not found")
 	}
+	if req.Tip == 0 {
+		if err := waitNonScoringRequest(ctx); err != nil {
+			return mutationHTTPError(err)
+		}
+	}
 	model := LivecommentModel{UserID: userID, LivestreamID: livestreamID, Comment: req.Comment, Tip: req.Tip, CreatedAt: time.Now().Unix()}
 	response := newResponseJSONBuilder(ctx)
 	_, err = response.user(userID)
