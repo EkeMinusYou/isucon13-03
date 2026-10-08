@@ -42,6 +42,7 @@ func (s *postStream) acquire(ctx context.Context) error {
 func (s *postStream) release() { <-s.gate }
 
 type postStore struct {
+	ngResults                    [16]boundedCache[ngPredicateKey, bool]
 	db                           *sqlx.DB
 	generation                   string
 	file                         *os.File

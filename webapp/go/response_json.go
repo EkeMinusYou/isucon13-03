@@ -45,12 +45,12 @@ func (s *referenceStore) userJSON(ctx context.Context, id int64) (*referenceJSON
 	return cached, nil
 }
 
-func (ref *livestreamReference) responseJSON(catalog *tagCatalog, owner User) ([]byte, error) {
+func (ref *livestreamReference) responseJSON(catalog *tagCatalog, owner User) (*referenceJSON, error) {
 	if catalog == nil {
 		return nil, fmt.Errorf("tag catalog is not loaded")
 	}
 	if cached := ref.response.Load(); cached != nil && cached.hash == owner.IconHash && cached.tags == catalog {
-		return cached.data, nil
+		return cached, nil
 	}
 	tags := make([]Tag, 0, len(ref.tagIDs))
 	for _, id := range ref.tagIDs {
@@ -69,8 +69,9 @@ func (ref *livestreamReference) responseJSON(catalog *tagCatalog, owner User) ([
 	if err != nil {
 		return nil, err
 	}
-	ref.response.Store(&referenceJSON{hash: owner.IconHash, tags: catalog, data: data})
-	return data, nil
+	cached := &referenceJSON{hash: owner.IconHash, tags: catalog, data: data}
+	ref.response.Store(cached)
+	return cached, nil
 }
 
 type responseJSONBuffer struct{ data []byte }
@@ -117,12 +118,12 @@ type responseJSONBuilder struct {
 	refs    *referenceStore
 	tags    *tagCatalog
 	users   map[int64]*referenceJSON
-	streams map[int64][]byte
+	streams map[int64]*referenceJSON
 }
 
 func newResponseJSONBuilder(ctx context.Context) *responseJSONBuilder {
 	return &responseJSONBuilder{ctx: ctx, refs: currentReferences.Load(), tags: currentTags.Load(),
-		users: make(map[int64]*referenceJSON), streams: make(map[int64][]byte)}
+		users: make(map[int64]*referenceJSON), streams: make(map[int64]*referenceJSON)}
 }
 
 func (b *responseJSONBuilder) user(id int64) (*referenceJSON, error) {
@@ -140,6 +141,14 @@ func (b *responseJSONBuilder) user(id int64) (*referenceJSON, error) {
 }
 
 func (b *responseJSONBuilder) stream(id int64) ([]byte, error) {
+	ref, err := b.streamReference(id)
+	if err != nil {
+		return nil, err
+	}
+	return ref.data, nil
+}
+
+func (b *responseJSONBuilder) streamReference(id int64) (*referenceJSON, error) {
 	if data, ok := b.streams[id]; ok {
 		return data, nil
 	}
@@ -190,12 +199,7 @@ func livecommentResponseJSON(ctx context.Context, models []LivecommentModel) (*r
 	b := acquireResponseJSON()
 	refs := newResponseJSONBuilder(ctx)
 	for i, model := range models {
-		user, err := refs.user(model.UserID)
-		if err != nil {
-			releaseResponseJSON(b)
-			return nil, err
-		}
-		stream, err := refs.stream(model.LivestreamID)
+		data, err := refs.commentJSON(model)
 		if err != nil {
 			releaseResponseJSON(b)
 			return nil, err
@@ -203,19 +207,7 @@ func livecommentResponseJSON(ctx context.Context, models []LivecommentModel) (*r
 		if i > 0 {
 			b.data = append(b.data, ',')
 		}
-		b.data = append(b.data, `{"id":`...)
-		b.data = strconv.AppendInt(b.data, model.ID, 10)
-		b.data = append(b.data, `,"user":`...)
-		b.data = append(b.data, user.data...)
-		b.data = append(b.data, `,"livestream":`...)
-		b.data = append(b.data, stream...)
-		b.data = append(b.data, `,"comment":`...)
-		b.data = appendResponseString(b.data, model.Comment)
-		b.data = append(b.data, `,"tip":`...)
-		b.data = strconv.AppendInt(b.data, model.Tip, 10)
-		b.data = append(b.data, `,"created_at":`...)
-		b.data = strconv.AppendInt(b.data, model.CreatedAt, 10)
-		b.data = append(b.data, '}')
+		b.data = append(b.data, data...)
 	}
 	b.data = append(b.data, ']')
 	return b, nil
@@ -225,12 +217,7 @@ func reactionResponseJSON(ctx context.Context, models []ReactionModel) (*respons
 	b := acquireResponseJSON()
 	refs := newResponseJSONBuilder(ctx)
 	for i, model := range models {
-		user, err := refs.user(model.UserID)
-		if err != nil {
-			releaseResponseJSON(b)
-			return nil, err
-		}
-		stream, err := refs.stream(model.LivestreamID)
+		data, err := refs.reactionJSON(model)
 		if err != nil {
 			releaseResponseJSON(b)
 			return nil, err
@@ -238,18 +225,66 @@ func reactionResponseJSON(ctx context.Context, models []ReactionModel) (*respons
 		if i > 0 {
 			b.data = append(b.data, ',')
 		}
-		b.data = append(b.data, `{"id":`...)
-		b.data = strconv.AppendInt(b.data, model.ID, 10)
-		b.data = append(b.data, `,"emoji_name":`...)
-		b.data = appendResponseString(b.data, model.EmojiName)
-		b.data = append(b.data, `,"user":`...)
-		b.data = append(b.data, user.data...)
-		b.data = append(b.data, `,"livestream":`...)
-		b.data = append(b.data, stream...)
-		b.data = append(b.data, `,"created_at":`...)
-		b.data = strconv.AppendInt(b.data, model.CreatedAt, 10)
-		b.data = append(b.data, '}')
+		b.data = append(b.data, data...)
 	}
 	b.data = append(b.data, ']')
 	return b, nil
+}
+
+func (b *responseJSONBuilder) commentJSON(model LivecommentModel) ([]byte, error) {
+	user, err := b.user(model.UserID)
+	if err != nil {
+		return nil, err
+	}
+	stream, err := b.streamReference(model.LivestreamID)
+	if err != nil {
+		return nil, err
+	}
+	key := rowJSONKey{comment: model, user: user, stream: stream}
+	cache := &b.refs.rowJSON[uint64(model.ID)&15]
+	if data, ok := cache.get(key); ok {
+		return data, nil
+	}
+	data := append([]byte(`{"id":`), strconv.FormatInt(model.ID, 10)...)
+	data = append(data, `,"user":`...)
+	data = append(data, user.data...)
+	data = append(data, `,"livestream":`...)
+	data = append(data, stream.data...)
+	data = append(data, `,"comment":`...)
+	data = appendResponseString(data, model.Comment)
+	data = append(data, `,"tip":`...)
+	data = strconv.AppendInt(data, model.Tip, 10)
+	data = append(data, `,"created_at":`...)
+	data = strconv.AppendInt(data, model.CreatedAt, 10)
+	data = append(data, '}')
+	cache.put(key, data, 256+len(model.Comment)+cap(data)+len(user.data)+len(stream.data), 2<<20)
+	return data, nil
+}
+
+func (b *responseJSONBuilder) reactionJSON(model ReactionModel) ([]byte, error) {
+	user, err := b.user(model.UserID)
+	if err != nil {
+		return nil, err
+	}
+	stream, err := b.streamReference(model.LivestreamID)
+	if err != nil {
+		return nil, err
+	}
+	key := rowJSONKey{reaction: model, user: user, stream: stream}
+	cache := &b.refs.rowJSON[uint64(model.ID)&15]
+	if data, ok := cache.get(key); ok {
+		return data, nil
+	}
+	data := append([]byte(`{"id":`), strconv.FormatInt(model.ID, 10)...)
+	data = append(data, `,"emoji_name":`...)
+	data = appendResponseString(data, model.EmojiName)
+	data = append(data, `,"user":`...)
+	data = append(data, user.data...)
+	data = append(data, `,"livestream":`...)
+	data = append(data, stream.data...)
+	data = append(data, `,"created_at":`...)
+	data = strconv.AppendInt(data, model.CreatedAt, 10)
+	data = append(data, '}')
+	cache.put(key, data, 256+len(model.EmojiName)+cap(data)+len(user.data)+len(stream.data), 2<<20)
+	return data, nil
 }

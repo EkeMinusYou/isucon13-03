@@ -38,8 +38,19 @@ func (s *postStore) matchesNG(ctx context.Context, text, wordsJSON string) (bool
 	if wordsJSON == "" {
 		return false, nil
 	}
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	key := ngPredicateKey{words: wordsJSON, text: text}
+	cache := &s.ngResults[predicateShard(text)]
+	if hit, ok := cache.get(key); ok {
+		return hit, nil
+	}
 	var hit bool
 	err := s.db.GetContext(ctx, &hit, `SELECT EXISTS(SELECT 1 FROM JSON_TABLE(?, '$[*]' COLUMNS(word VARCHAR(255) CHARACTER SET utf8mb4 PATH '$')) AS w WHERE CONVERT(? USING utf8mb4) COLLATE utf8mb4_general_ci LIKE CONCAT('%', w.word COLLATE utf8mb4_general_ci, '%'))`, wordsJSON, text)
+	if err == nil {
+		cache.put(key, hit, 96+len(wordsJSON)+len(text), 256<<10)
+	}
 	return hit, err
 }
 func (s *postStore) prepareModeration(ctx context.Context, state *postStream, op *moderationMutation) (postRecord, error) {

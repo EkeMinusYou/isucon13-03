@@ -87,8 +87,10 @@ INSERT INTO livecomments (id,user_id,livestream_id,comment,tip,created_at) VALUE
 					wantStatus = http.StatusBadRequest
 				}
 				body, _ := json.Marshal(PostLivecommentRequest{Comment: text, Tip: 3})
-				if rec := improvementRequest(t, e, cookies, http.MethodPost, "/api/livestream/1/livecomment", string(body), 2); rec.Code != wantStatus {
-					t.Fatalf("cached NG predicate for %q: got=%d want=%d body=%s", text, rec.Code, wantStatus, rec.Body)
+				for repeat := 0; repeat < 2; repeat++ {
+					if rec := improvementRequest(t, e, cookies, http.MethodPost, "/api/livestream/1/livecomment", string(body), 2); rec.Code != wantStatus {
+						t.Fatalf("cached NG predicate for %q: got=%d want=%d body=%s", text, rec.Code, wantStatus, rec.Body)
+					}
 				}
 			}
 			moderate("a_b") // Must also remove SQL-seeded CAFE on the first scan.
@@ -96,6 +98,15 @@ INSERT INTO livecomments (id,user_id,livestream_id,comment,tip,created_at) VALUE
 				post(text)
 			}
 			moderate(`slash\_`)
+			post("slash_") // A previously accepted cache entry must not survive the new predicate.
+			cacheHits := uint64(0)
+			for i := range currentMutations.Load().ngResults {
+				hits, _, _ := currentMutations.Load().ngResults[i].stats()
+				cacheHits += hits
+			}
+			if cacheHits < 6 {
+				t.Fatalf("NG results were not reused: hits=%d", cacheHits)
+			}
 			before, _, err := currentMutations.Load().timeline(context.Background(), 1, -1, true)
 			if err != nil {
 				t.Fatal(err)

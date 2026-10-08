@@ -48,6 +48,11 @@ type livestreamReference struct {
 type referenceStore struct {
 	users       sync.Map // int64 -> *userReference
 	livestreams sync.Map // int64 -> *livestreamReference
+	indexMu     sync.RWMutex
+	allStreams  []*LivestreamModel
+	byUser      map[int64][]*LivestreamModel
+	byTag       map[int64][]*LivestreamModel
+	rowJSON     [16]boundedCache[rowJSONKey, []byte]
 }
 
 var currentReferences atomic.Pointer[referenceStore]
@@ -107,6 +112,10 @@ func reloadReferences(ctx context.Context) error {
 			ref.tagIDs = append(ref.tagIDs, link.TagID)
 		}
 	}
+	store.livestreams.Range(func(_, value any) bool {
+		store.indexStream(value.(*livestreamReference))
+		return true
+	})
 	if err := tx.Commit(); err != nil {
 		return err
 	}
@@ -193,6 +202,7 @@ func (s *referenceStore) commitLivestream(ctx context.Context, tx *sqlx.Tx, mode
 		close(ref.ready)
 		return err
 	}
+	s.indexStream(ref)
 	close(ref.ready)
 	return nil
 }

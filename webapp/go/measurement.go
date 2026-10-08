@@ -18,6 +18,7 @@ func mutationSnapshot() app.Snapshot {
 	var posts map[string]any
 	metrics := make(map[string]any)
 	if store := currentMutations.Load(); store != nil {
+		addCacheMetrics(metrics, "ng_cache", &store.ngResults)
 		posts = store.metrics()
 		metrics["wal_records_total"] = posts["records"]
 		metrics["wal_syncs_total"] = posts["syncs"]
@@ -32,6 +33,9 @@ func mutationSnapshot() app.Snapshot {
 		metrics["icon_uploads_total"] = posts["icon_uploads"]
 		metrics["icon_wal_bytes_total"] = posts["icon_bytes"]
 		metrics["icon_wal_chunks_total"] = posts["icon_chunks"]
+	}
+	if refs := currentReferences.Load(); refs != nil {
+		addCacheMetrics(metrics, "row_json_cache", &refs.rowJSON)
 	}
 	return app.Snapshot{Metrics: metrics, Extra: map[string]any{"post_wal": posts}}
 }

@@ -68,6 +68,7 @@ func checkResponseBatching(t *testing.T, db *sqlx.DB, e *echo.Echo, store *struc
 	}{
 		{"/api/livestream/search?limit=2", []int64{6, 5}},
 		{"/api/livestream/search?tag=tag-b&limit=1", []int64{2, 1, 1}},
+		{"/api/livestream/search?tag=tag-b%20%20&limit=invalid", []int64{2, 1, 1}},
 		{"/api/livestream", []int64{1, 2}},
 		{"/api/user/beta/livestream", []int64{3}},
 	} {
@@ -114,6 +115,18 @@ func checkResponseBatching(t *testing.T, db *sqlx.DB, e *echo.Echo, store *struc
 		rec := improvementRequest(t, e, store, http.MethodGet, path, "", 1)
 		if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != "[]" {
 			t.Fatalf("%s: empty result status=%d body=%s", path, rec.Code, rec.Body.String())
+		}
+	}
+	for _, tc := range []struct {
+		path   string
+		status int
+	}{
+		{"/api/livestream/search?limit=-1", http.StatusInternalServerError},
+		{"/api/livestream/search?limit=invalid", http.StatusBadRequest},
+		{"/api/livestream/search?tag=unknown", http.StatusInternalServerError},
+	} {
+		if rec := improvementRequest(t, e, store, http.MethodGet, tc.path, "", 1); rec.Code != tc.status {
+			t.Fatalf("%s: status=%d want=%d", tc.path, rec.Code, tc.status)
 		}
 	}
 	// The number of statements must not grow with repeated timeline entries.
@@ -344,6 +357,15 @@ func checkReservationAtomicity(t *testing.T, db *sqlx.DB, e *echo.Echo, store *s
 		var restored Livestream
 		if err := json.Unmarshal(rec.Body.Bytes(), &restored); err != nil || rec.Code != http.StatusOK || !reflect.DeepEqual(restored, reserved) {
 			t.Fatalf("reserved metadata reload=%v status=%d body=%s err=%v", reload, rec.Code, rec.Body.String(), err)
+		}
+		rec = improvementRequest(t, e, store, http.MethodGet, "/api/livestream/search?limit=1", "", 1)
+		var found []Livestream
+		if err := json.Unmarshal(rec.Body.Bytes(), &found); err != nil || rec.Code != http.StatusOK || len(found) != 1 || !reflect.DeepEqual(found[0], reserved) {
+			t.Fatalf("reserved search reload=%v status=%d body=%s err=%v", reload, rec.Code, rec.Body.String(), err)
+		}
+		rec = improvementRequest(t, e, store, http.MethodGet, "/api/livestream", "", reserved.Owner.ID)
+		if err := json.Unmarshal(rec.Body.Bytes(), &found); err != nil || rec.Code != http.StatusOK || len(found) == 0 || !reflect.DeepEqual(found[len(found)-1], reserved) {
+			t.Fatalf("reserved user index reload=%v status=%d body=%s err=%v", reload, rec.Code, rec.Body.String(), err)
 		}
 	}
 }

@@ -4,14 +4,16 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"sync/atomic"
 
 	"github.com/jmoiron/sqlx"
 )
 
 type tagCatalog struct {
-	tags []Tag
-	byID map[int64]Tag
+	tags   []Tag
+	byID   map[int64]Tag
+	byName map[string]int64
 }
 
 var currentTags atomic.Pointer[tagCatalog]
@@ -31,11 +33,13 @@ func reloadTags(ctx context.Context) error {
 	if err := dbConn.SelectContext(ctx, &models, "SELECT * FROM tags ORDER BY id"); err != nil {
 		return err
 	}
-	catalog := &tagCatalog{tags: make([]Tag, len(models)), byID: make(map[int64]Tag, len(models))}
+	catalog := &tagCatalog{tags: make([]Tag, len(models)), byID: make(map[int64]Tag, len(models)), byName: make(map[string]int64, len(models))}
 	for i, model := range models {
 		tag := Tag{ID: model.ID, Name: model.Name}
 		catalog.tags[i] = tag
 		catalog.byID[tag.ID] = tag
+		// utf8mb4_bin equality ignores trailing ASCII spaces.
+		catalog.byName[strings.TrimRight(tag.Name, " ")] = tag.ID
 	}
 	currentTags.Store(catalog)
 	return nil
