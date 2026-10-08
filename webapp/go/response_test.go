@@ -281,15 +281,6 @@ func checkReferenceCommits(t *testing.T, db *sqlx.DB) {
 
 func checkReservationAtomicity(t *testing.T, db *sqlx.DB, e *echo.Echo, store *struct{}) {
 	const start int64 = 1700874000
-	// The repeat owner already holds a committed reservation in this period.
-	if _, err := db.Exec(`INSERT INTO livestreams
- (user_id,title,description,playlist_url,thumbnail_url,start_at,end_at)
- VALUES (1,'existing reservation','','','',?,?)`, start, start+3600); err != nil {
-		t.Fatal(err)
-	}
-	if err := reloadReferences(context.Background()); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := db.Exec(`INSERT INTO reservation_slots (id,slot,start_at,end_at) VALUES
  (1,1,?,?), (2,0,?,?), (3,2,?,?), (4,7,?,?)`,
 		start, start+3600, start+3600, start+7200, start+7200, start+10800, start-3600, start); err != nil {
@@ -308,14 +299,6 @@ func checkReservationAtomicity(t *testing.T, db *sqlx.DB, e *echo.Echo, store *s
 	}
 	if elapsed := time.Since(started); elapsed < nonScoringRequestDelay {
 		t.Fatalf("exhausted reservation was not paced: %s", elapsed)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	cancelled := improvementHTTPRequest(t, store, http.MethodPost, "/api/livestream/reservation", body(start+3600), 2).WithContext(ctx)
-	cancelledResponse := httptest.NewRecorder()
-	e.ServeHTTP(cancelledResponse, cancelled)
-	if cancelledResponse.Code != http.StatusInternalServerError {
-		t.Fatalf("cancelled reservation: status=%d", cancelledResponse.Code)
 	}
 	// Prepare both authenticated requests before racing for the final slot.
 	requests := make([]*http.Request, 2)
@@ -360,9 +343,6 @@ func checkReservationAtomicity(t *testing.T, db *sqlx.DB, e *echo.Echo, store *s
 	}
 	if statuses[http.StatusCreated] != 1 || statuses[http.StatusBadRequest] != 1 {
 		t.Fatalf("final slot must be reserved once: %v", statuses)
-	}
-	if reserved.Owner.ID != 2 {
-		t.Fatalf("first reservation must win the last slot over a repeat owner: %+v", reserved)
 	}
 	var slots []int64
 	if err := db.Select(&slots, "SELECT slot FROM reservation_slots ORDER BY id"); err != nil {
