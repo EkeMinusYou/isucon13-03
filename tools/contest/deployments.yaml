@@ -156,7 +156,11 @@ deployments:
           sudo systemctl daemon-reload
           sudo systemctl restart {var:service}
           sudo systemctl is-active --quiet {var:service}
-          curl --fail --silent --show-error --retry 20 --retry-connrefused --retry-delay 1 --max-time 2 'http://127.0.0.1:{var:listen_port}/api/tag' >/dev/null
+          # Keep transient startup errors quiet; report them if retries fail.
+          if ! error=$(curl --fail --silent --show-error --retry 20 --retry-connrefused --retry-delay 1 --max-time 2 'http://127.0.0.1:{var:listen_port}/api/tag' 2>&1 >/dev/null); then
+            printf '%s\n' "$error" >&2
+            exit 1
+          fi
 
   app-after-schema:
     uploads: [*app_code, *app_unit, *app_sql, *app_zone]

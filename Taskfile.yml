@@ -23,7 +23,7 @@ vars:
   LISTEN_PORT: '8080'
   TARGET_OS: linux
   TARGET_ARCH: amd64
-  # Example budget: initialization + checks + load + margin. Tune for the contest.
+  # Capture upper bound: initialization + checks + load + margin. Stops at benchmark completion.
   PROFILE_SECONDS: '180'
   SNAPSHOT_PROFILE_DELAY: 60s
   # Additional local files read during DB recreation or initialization; use 'none' if empty.
@@ -129,6 +129,7 @@ vars:
   NGINX_ONCPU_PROBE_URL: http://127.0.0.1/
   PPROF_BASE_URL: http://127.0.0.1:6060/debug/pprof
   PROFILE_STATUS_URL: http://127.0.0.1:6060/debug/profiles/status
+  PROFILE_STOP_URL: http://127.0.0.1:6060/debug/profiles/stop
   # Standard measurement; setup must install the endpoint adapter before a RUN.
   PROFILES_ENABLED: 'true'
   PROFILE_DELAY: 0s
@@ -165,6 +166,7 @@ vars:
     -var pprof_base_url={{.PPROF_BASE_URL}}
     -var sql_pool_metrics_url=http://127.0.0.1:6060/debug/sql-pools
     -var profile_status_url={{.PROFILE_STATUS_URL}}
+    -var profile_stop_url={{.PROFILE_STOP_URL}}
     -var profile_ready_timeout_seconds={{.PROFILE_READY_TIMEOUT_SECONDS}}
     -var fgprof_url={{.FGPROF_URL}}
     -var profile_delay={{.PROFILE_DELAY}}
@@ -368,6 +370,11 @@ tasks:
     sources: ['*.go', internal/pprofimport/*.go, go.mod, go.sum, ../analysis/sources.yaml, ../analysis/schema/*.sql, ../contest/analysis-schema/*.sql]
     generates: [analysisctl]
     cmds: ['go build -trimpath -ldflags "-s -w" -o analysisctl .']
+
+  test-measurectl:
+    desc: 計測制御ツールをローカルで検証
+    dir: '{{.MEASURECTL_DIR}}'
+    cmds: [go test -race ./...]
 
   test-tools:
     desc: 全Goツールのテストを実行
@@ -789,6 +796,14 @@ tasks:
       ACTIVE_RUN_ID:
         sh: sh tools/bench/active-run-id.sh '{{.RUN_STATE_FILE}}'
     cmds: ['{{.MEASURECTL_DIR}}/measurectl collect ready -group profiles -run-id {{.ACTIVE_RUN_ID}} {{.MEASURECTL_REMOTE}}']
+
+  profiles-stop:
+    desc: 進行中RUNのCPU・fgprofへ停止を通知し、採取中のHTTP応答で書き出す
+    deps: [build-measurectl]
+    vars:
+      ACTIVE_RUN_ID:
+        sh: sh tools/bench/active-run-id.sh '{{.RUN_STATE_FILE}}'
+    cmds: ['{{.MEASURECTL_DIR}}/measurectl collect oneshot-stop -group profiles -run-id {{.ACTIVE_RUN_ID}} {{.MEASURECTL_REMOTE}}']
 
   fgprof-collect:
     desc: 進行中RUNへfgprofを収集

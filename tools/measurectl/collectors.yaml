@@ -41,6 +41,7 @@ oneshots:
     hosts: app
     delay: '{var:profile_delay}'
     run: curl -fsS --max-time {var:profile_timeout_seconds} -o {remote_out} '{var:fgprof_url}&run_id={run_id}'
+    stop: curl -fsS --max-time 5 -X POST '{var:profile_stop_url}?kind=fgprof&run_id={run_id}'
     ready: |
       set -eu
       deadline=$(( $(date +%s) + {var:profile_ready_timeout_seconds} ))
@@ -58,6 +59,7 @@ oneshots:
     hosts: app
     delay: '{var:profile_delay}'
     run: curl -fsS --max-time {var:profile_timeout_seconds} -o {remote_out} '{var:pprof_base_url}/profile?seconds={var:profile_seconds}&run_id={run_id}'
+    stop: curl -fsS --max-time 5 -X POST '{var:profile_stop_url}?kind=cpu&run_id={run_id}'
     ready: |
       set -eu
       deadline=$(( $(date +%s) + {var:profile_ready_timeout_seconds} ))

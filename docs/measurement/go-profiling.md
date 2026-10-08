@@ -15,11 +15,14 @@ profileは標準計測として既定で有効。テンプレートはアプリ�
 | `/debug/fgprof?seconds=N&run_id=ID` | goroutineのwall-clock profile |
 | `/debug/pprof/heap`、`allocs`、`goroutine` | snapshot |
 | `/debug/profiles/status` | 実行中の種類とRUN IDをJSONで返す |
+| `POST /debug/profiles/stop?kind=cpu\|fgprof&run_id=ID` | 指定RUNの採取へ停止を通知する |
 
 開始確認は `{"cpu":"RUN_ID","fgprof":"RUN_ID"}` のような空白なしのJSONを前提とする。
 未実行の種類は空文字を返す。標準`net/http/pprof`だけではこのendpointは存在しない。
 独自adapterを使う場合は`collectors.yaml`の`ready`もその形式に合わせる。
 同じ種類の並行収集は拒否し、CPUとfgprofの併用は許容する。
+停止通知はRUN IDを照合し、別RUNの採取には409を返す。停止済みの採取への再通知は204を返す。
+通知は採取ハンドラーへ伝え、profileの書き出しは採取中のHTTP応答で完了させる。
 
 ## 時間と開始順序
 
@@ -28,15 +31,18 @@ Taskfileの次の値を競技に合わせる。120秒・40秒は例であり、�
 | 設定 | 意味 |
 |---|---|
 | `PROFILES_ENABLED` | 既定true。比較等で採取を停止する場合だけfalseに変更 |
-| `PROFILE_SECONDS` | 初期化・整合性チェック・負荷本体・終了処理と余裕を覆う秒数 |
+| `PROFILE_SECONDS` | 初期化・整合性チェック・負荷本体・終了処理と余裕を覆う採取上限。通常はベンチ終了通知で早期停止 |
 | `PROFILE_DELAY` | 自動収集では通常0s。遅延を増やすなら開始確認timeoutも調整 |
 | `SNAPSHOT_PROFILE_DELAY` | 初期化後かつ負荷終了前にsnapshotを取得する遅延 |
 | `PROFILE_TIMEOUT_SECONDS` | 既定では取得秒数+15秒。アプリのWriteTimeoutも十分長くする |
 | `PROFILE_READY_TIMEOUT_SECONDS` | SSH到達後に採取開始を待つ秒数 |
 | `PPROF_BASE_URL` / `FGPROF_URL` / `PROFILE_STATUS_URL` | adapterの公開先。fgprofのsecondsはPROFILE_SECONDSに追従 |
+| `PROFILE_STOP_URL` | RUN IDを照合して採取へ停止を通知するendpoint |
 
 通常の`task bench` / `task bench-manual`が`group: profiles`の有効な宣言を選び、収集開始、全ホストの開始確認、
-1秒の先行収録、開始状態の再確認、負荷開始、profile回収待ち、finalizeを順に行う。手動モードでは案内後すぐに負荷を開始する。
+1秒の先行収録、開始状態の再確認、負荷開始、終了時刻の記録、停止通知、profile回収待ち、finalizeを順に行う。
+手動モードでは案内後すぐに負荷を開始し、完了のEnter直後に停止通知する。結果ファイルやスコアの入力中も回収は進む。
+停止通知は全APP_HOSTSの有効なCPU・fgprof宣言へ並列に送る。失敗した場合は採取上限まで待って回収・finalizeし、エラーを返す。
 ポータルの待機が長い場合など、採取窓が負荷を覆わなければartifact検査は失敗する。
 開始確認失敗時は負荷を開始せず、失敗RUNとして回収を試みる。
 開始通知はprofiler起動成功後に公開する。GoのCPU profile writerは非同期に起動するため、
@@ -53,6 +59,7 @@ task profiles-ready
 sleep 1
 task profiles-ready
 # Start the benchmark immediately in another terminal and wait for completion.
+task profiles-stop
 wait "$profile_pid"
 task after-bench SCORE=12345
 ```
@@ -106,11 +113,37 @@ func profileHandlerWithStarters(maxSeconds int, startCPU, startFG samplingStarte
 	mux := http.NewServeMux()
 	var stateMu sync.Mutex
 	active := map[string]string{"cpu": "", "fgprof": ""}
+	stopRequests := make(map[string]chan struct{})
 	mux.HandleFunc("/debug/profiles/status", func(w http.ResponseWriter, r *http.Request) {
 		stateMu.Lock()
 		defer stateMu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(active)
+	})
+	mux.HandleFunc("/debug/profiles/stop", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", http.MethodPost)
+			http.Error(w, "POST is required", http.StatusMethodNotAllowed)
+			return
+		}
+		kind, runID := r.URL.Query().Get("kind"), r.URL.Query().Get("run_id")
+		if (kind != "cpu" && kind != "fgprof") || runID == "" {
+			http.Error(w, "kind must be cpu or fgprof and run_id is required", http.StatusBadRequest)
+			return
+		}
+		stateMu.Lock()
+		defer stateMu.Unlock()
+		if active[kind] != "" && active[kind] != runID {
+			http.Error(w, "profile belongs to another RUN", http.StatusConflict)
+			return
+		}
+		// Signal the owning handler; it exports through the original HTTP response.
+		// Repeated stops and already completed captures are harmless.
+		if stop := stopRequests[kind]; stop != nil {
+			close(stop)
+			delete(stopRequests, kind)
+		}
+		w.WriteHeader(http.StatusNoContent)
 	})
 	// CPU and goroutine wall-clock sampling can run together. Reject duplicate
 	// captures of the same kind and expose RUN ownership to the collector gate.
@@ -140,15 +173,18 @@ func profileHandlerWithStarters(maxSeconds int, startCPU, startFG samplingStarte
 				return
 			}
 			// Publish RUN ownership only after the profiler has started successfully.
+			stopRequested := make(chan struct{})
 			stateMu.Lock()
 			active[kind] = r.URL.Query().Get("run_id")
 			if active[kind] == "" {
 				active[kind] = "manual"
 			}
+			stopRequests[kind] = stopRequested
 			stateMu.Unlock()
 			defer func() {
 				stateMu.Lock()
 				active[kind] = ""
+				delete(stopRequests, kind)
 				stateMu.Unlock()
 			}()
 			defer func() {
@@ -160,6 +196,7 @@ func profileHandlerWithStarters(maxSeconds int, startCPU, startFG samplingStarte
 			defer timer.Stop()
 			select {
 			case <-timer.C:
+			case <-stopRequested:
 			case <-r.Context().Done():
 			}
 		})
@@ -211,6 +248,7 @@ profile有効化による負荷は同じアプリ・配置・負荷条件で比�
 
 次RUNのprofileを止めるには`PROFILES_ENABLED=false`へ戻す。
 no-collectorsタスクは周期collectorとprofileを無効化するが、ログは出力・回収を続ける。
-進行中の採取は設定した上限内で終了するため、通常の回収を待つ。
+進行中の採取は`task profiles-stop`で早期停止し、採取中の回収処理が完了するまで待つ。
+停止通知が届かない場合も設定した採取上限で終了する。
 アプリからadapterも取り除く場合は、進行中RUNがないことを確認し、ローカルで呼び出しと実装を戻して
 build・deployのdry-run・正規deployを行う。保存済みRUNは変更しない。
