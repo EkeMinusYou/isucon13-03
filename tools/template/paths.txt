@@ -44,6 +44,11 @@ docs/reference-model.md
 docs/dns-batching.md
 docs/go-dns-design.md
 docs/wal-icon-durability.md
+docs/auth-caches.md
+docs/colocated-ingress.md
+docs/reservation-wal-gzip-latency.md
+docs/measurement/conversation-gaps-20261009.md
+docs/measurement/unauthorized-cache-metrics-20261009.md
 etc
 generated
 mysql
