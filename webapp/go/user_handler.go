@@ -164,6 +164,7 @@ func registerHandler(c echo.Context) error {
 	if err := currentReferences.Load().commitUser(tx, user); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to commit: "+err.Error())
 	}
+	authenticationCaches().rememberPassword(userID, userModel.HashedPassword, req.Password)
 
 	if err := updateDNS(ctx, "/register", req.Name); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to publish DNS: "+err.Error())
@@ -203,7 +204,7 @@ func loginHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to commit: "+err.Error())
 	}
 
-	err = bcrypt.CompareHashAndPassword([]byte(userModel.HashedPassword), []byte(req.Password))
+	err = authenticationCaches().comparePassword(userModel.ID, userModel.HashedPassword, req.Password)
 	if err == bcrypt.ErrMismatchedHashAndPassword {
 		return echo.NewHTTPError(http.StatusUnauthorized, "invalid username or password")
 	}

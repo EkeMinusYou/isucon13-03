@@ -35,14 +35,32 @@ func encodeSession(userID, expires int64) (string, authSession, error) {
 	_, _ = mac.Write([]byte("isupipe-session-v1:"))
 	_, _ = mac.Write(token[:sessionPayloadSize])
 	copy(token[sessionPayloadSize:], mac.Sum(nil))
-	return base64.RawURLEncoding.EncodeToString(token[:]), authSession{UserID: userID, Expires: expires, ID: hex.EncodeToString(token[sessionPayloadSize:])}, nil
+	value := base64.RawURLEncoding.EncodeToString(token[:])
+	session := authSession{UserID: userID, Expires: expires, ID: hex.EncodeToString(token[sessionPayloadSize:])}
+	authenticationCaches().rememberSession(value, session)
+	return value, session, nil
 }
 
 func decodeSession(value string, now int64) (authSession, error) {
-	var token [sessionPayloadSize + sha256.Size]byte
-	if len(value) != base64.RawURLEncoding.EncodedLen(len(token)) {
+	if len(value) != base64.RawURLEncoding.EncodedLen(sessionPayloadSize+sha256.Size) {
 		return authSession{}, errors.New("invalid session")
 	}
+	cache := authenticationCaches()
+	if session, ok := cache.sessions[value[32]&15].get(value); ok {
+		if now > session.Expires {
+			return authSession{}, errors.New("session has expired or has invalid user")
+		}
+		return session, nil
+	}
+	session, err := decodeSessionUncached(value, now)
+	if err == nil {
+		cache.rememberSession(value, session)
+	}
+	return session, err
+}
+
+func decodeSessionUncached(value string, now int64) (authSession, error) {
+	var token [sessionPayloadSize + sha256.Size]byte
 	n, err := base64.RawURLEncoding.Decode(token[:], []byte(value))
 	if err != nil || n != len(token) || token[0] != 1 {
 		return authSession{}, errors.New("invalid session")

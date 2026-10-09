@@ -115,6 +115,7 @@ func connectDB(logger echo.Logger) (*sqlx.DB, error) {
 func initializeHandler(c echo.Context) error {
 	appLifecycle.Lock()
 	defer appLifecycle.Unlock()
+	resetAuthenticationCaches()
 	if writer := currentMutations.Swap(nil); writer != nil {
 		_ = writer.close()
 	}

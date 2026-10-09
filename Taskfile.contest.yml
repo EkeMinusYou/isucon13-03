@@ -271,6 +271,11 @@ tasks:
     cmds:
       - cd '{{.APP_DIR}}' && go test -race -v ./... -run 'Test(CreatedRowJSON|ResponseJSON|TimelineGzip)'
 
+  check-auth-caches-local:
+    desc: パスワード照合・セッションキャッシュの認証境界をrace検証する
+    cmds:
+      - cd '{{.APP_DIR}}' && go test -race -v ./... -run 'Test(CompactSessionAuthentication|AuthenticationCaches)'
+
   check-request-pacing-local:
     desc: リクエスト待機追加後のGoアプリをローカルでrace検証する
     cmds:
@@ -835,7 +840,7 @@ tasks:
             cd {{.REMOTE_HOME}}/{{.APP_DIR}}
             sudo env ISUCON_TEST_MYSQL_DSN="root@unix(/var/run/mysqld/mysqld.sock)/" \
               ISUCON_TEST_SCHEMA=/tmp/isucon-app-improvements/schema.sql \
-              /tmp/isucon-app-improvements/app.test -test.v -test.run "^TestImprovementsMySQL$"
+              /tmp/isucon-app-improvements/app.test -test.v -test.run "{{.APP_IMPROVEMENTS_TEST_RUN | default "^TestImprovementsMySQL$"}}"
           '
 
   check-app-deployment:
