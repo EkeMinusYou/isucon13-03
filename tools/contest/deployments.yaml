@@ -71,7 +71,7 @@ deployments:
   nginx:
     uploads:
       - {label: nginx njs module, role: nginx, local: .task/icon-edge/build/ngx_http_js_module.so, remote: /etc/nginx/ngx_http_js_module.so}
-      - &ingress_nginx_config {label: nginx configuration, role: nginx, local: nginx/, remote: /etc/nginx/, excludes: [tls/, ngx_http_js_module.so], delete: true, validate: sudo nginx -t}
+      - &ingress_nginx_config {label: host-specific nginx configuration, role: nginx, local: 'tools/contest/generated/nginx/{host}/', remote: /etc/nginx/, excludes: [tls/, ngx_http_js_module.so], delete: true, validate: sudo nginx -t}
       - &ingress_public_assets {label: public assets, role: nginx, local: webapp/public/, remote: /home/isucon/webapp/public/, delete: true}
     activations: &ingress_nginx_activation
       - label: reload or start nginx
@@ -104,6 +104,10 @@ deployments:
           sudo systemctl restart nginx
           sudo systemctl is-active --quiet nginx
           curl --fail --silent --show-error --max-time 10 --cacert /etc/nginx/tls/_.u.isucon.dev.crt --resolve pipe.u.isucon.dev:443:127.0.0.1 https://pipe.u.isucon.dev/api/tag >/dev/null
+          case ',{var:icon_read_hosts},' in
+            *',{host},'*) ;;
+            *) exit 0 ;;
+          esac
           for attempt in $(seq 1 30); do
             if curl --fail --silent --max-time 2 http://127.0.0.1:8055/status | python3 -c 'import json,sys; s=json.load(sys.stdin); assert s["fresh"] and not s["dirty"] and s["users"] > 0'; then
               exit 0
@@ -115,13 +119,13 @@ deployments:
 
   nginx-retire:
     activations:
-      - label: stop nginx on the application host after DNS switches
-        role: app
+      - label: stop nginx outside its assigned hosts after DNS switches
+        role: all
         script: |
           set -eu
           case ',{var:nginx_hosts},' in
             *',{host},'*) ;;
-            *) sudo systemctl disable --now nginx; test "$(sudo systemctl show nginx -p MainPID --value)" = 0 ;;
+            *) if sudo systemctl cat nginx >/dev/null 2>&1; then sudo systemctl disable --now nginx; fi; test "$(sudo systemctl show nginx -p MainPID --value)" = 0 ;;
           esac
 
   topology-config:
@@ -308,7 +312,8 @@ plans:
       icon-read: {needs: [app]}
       ingress-nginx: {needs: [icon-read]}
       ingress-dns: {needs: [ingress-nginx]}
-      icon-reader-roles: {needs: [ingress-dns]}
+      nginx-retire: {needs: [ingress-dns]}
+      icon-reader-roles: {needs: [nginx-retire]}
   icon-edge:
     deployments:
       icon-edge-module: {}

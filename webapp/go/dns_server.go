@@ -17,6 +17,8 @@ type dnsBase struct {
 	names         map[string]bool
 	address       [4]byte
 	commonAddress [4]byte
+	nsAddress     [4]byte
+	nsName        string
 	ns            dnsmessage.NSResource
 	soa           dnsmessage.SOAResource
 }
@@ -40,6 +42,7 @@ func parseDNSBase(data []byte, address net.IP) (*dnsBase, error) {
 	}
 	b := &dnsBase{names: make(map[string]bool)}
 	copy(b.address[:], ip)
+	addresses := make(map[string][4]byte)
 	resolve := func(s string) string {
 		if s == "@" {
 			return dnsSuffix
@@ -101,12 +104,18 @@ func parseDNSBase(data []byte, address net.IP) (*dnsBase, error) {
 					}
 				}
 				b.names[name] = true
+				if literal := net.ParseIP(f[4]).To4(); literal != nil {
+					var value [4]byte
+					copy(value[:], literal)
+					addresses[name] = value
+				}
 			case "NS":
 				target := resolve(f[4])
 				if nsSeen || name != dnsSuffix || !validDNSFQDN(target) || !inDNSZone(target) {
 					return fmt.Errorf("invalid base NS")
 				}
 				b.ns = dnsmessage.NSResource{NS: dnsmessage.MustNewName(target)}
+				b.nsName = target
 				nsSeen = true
 			default:
 				return fmt.Errorf("unsupported base record %q", f[3])
@@ -142,6 +151,10 @@ func parseDNSBase(data []byte, address net.IP) (*dnsBase, error) {
 	}
 	if statement != "" || !soaSeen || !nsSeen || !b.names[b.ns.NS.String()] {
 		return nil, fmt.Errorf("incomplete base DNS zone")
+	}
+	b.nsAddress = b.address
+	if address, ok := addresses[b.nsName]; ok {
+		b.nsAddress = address
 	}
 	return b, nil
 }
@@ -243,8 +256,11 @@ func (d *dnsControl) dnsResponse(packet, scratch []byte) []byte {
 	d.mu.RUnlock()
 	aRecord := func(owner dnsmessage.Name) dnsmessage.Resource {
 		address := d.base.address
-		if dnsCanonical(owner.String()) == "pipe."+dnsSuffix {
+		name := dnsCanonical(owner.String())
+		if name == "pipe."+dnsSuffix {
 			address = d.base.commonAddress
+		} else if name == d.base.nsName {
+			address = d.base.nsAddress
 		}
 		return dnsmessage.Resource{Header: dnsmessage.ResourceHeader{Name: owner, Type: dnsmessage.TypeA, Class: dnsmessage.ClassINET, TTL: 300}, Body: &dnsmessage.AResource{A: address}}
 	}

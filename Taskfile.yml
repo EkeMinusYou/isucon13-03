@@ -40,6 +40,7 @@ vars:
   SQL_SCHEMA_FILE: initdb.d/10_schema.sql
   INITIALIZE_PATH: /api/initialize
   CONFIG_CHECK_COMMAND: 'task config-check && task config-check-dns'
+  CONFIG_CHECK_CONFIG: tools/contest/config-check.yaml
   SETUP_SECRET_ALLOWLIST: ''
   MANAGED_SERVICES: '{{.SERVICE}},nginx,mysql,isupipe-dns,isupipe-icons'
   # <<< contest values <<<
@@ -69,7 +70,7 @@ vars:
       isucon-1: 43.207.86.150
       isucon-2: 13.230.232.20
       isucon-3: 52.192.157.52
-  ICON_READ_HOSTS: isucon-1 isucon-2
+  ICON_READ_HOSTS: isucon-2
   ICON_READ_PORT: '8054'
   ICON_READ_IPS: '{{$ips := list}}{{range (splitList " " .ICON_READ_HOSTS)}}{{$ips = append $ips (index $.IP .)}}{{end}}{{join " " $ips}}'
   ICON_READ_URLS: '{{$urls := list}}{{range (splitList " " .ICON_READ_HOSTS)}}{{$urls = append $urls (printf "http://%s:%s" (index $.IP .) $.ICON_READ_PORT)}}{{end}}{{join " " $urls}}'
@@ -78,7 +79,7 @@ vars:
   APP_HOSTS: isucon-3
   APP_TRAFFIC_HOSTS: isucon-3
   APP_ORIGIN_IP: '{{index .IP (splitList " " .APP_HOSTS | first)}}'
-  NGINX_HOSTS: isucon-1 isucon-2
+  NGINX_HOSTS: isucon-3 isucon-2
   DNS_HOSTS: isucon-1
   DNS_CONTROL_PORT: '8053'
   DNS_IP: '{{index .IP (splitList " " .DNS_HOSTS | first)}}'
@@ -1030,4 +1031,4 @@ tasks:
     deps: [build-deployctl]
     cmds:
       - task: gen
-      - '{{.DEPLOYCTL_DIR}}/deployctl apply config-check -config tools/setup/config-check.yaml {{.DEPLOYCTL_COMMON}}'
+      - '{{.DEPLOYCTL_DIR}}/deployctl apply config-check -config {{.CONFIG_CHECK_CONFIG}} {{.DEPLOYCTL_COMMON}}'

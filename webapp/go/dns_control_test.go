@@ -25,7 +25,8 @@ const dnsTestBase = "$TTL 3600\n@ SOA ns1 hostmaster.u.isucon.dev. ( 0 10800 360
 func TestDNSSplitIngressAndRecovery(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "registrations.wal")
 	streamIP, commonIP := net.ParseIP("192.0.2.1"), net.ParseIP("192.0.2.2")
-	d, err := newDNSControl([]byte(dnsTestBase), path, streamIP, commonIP)
+	base := strings.Replace(dnsTestBase, "ns1 0 IN A <ISUCON_SUBDOMAIN_ADDRESS>", "ns1 0 IN A 192.0.2.3", 1)
+	d, err := newDNSControl([]byte(base), path, streamIP, commonIP)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +41,7 @@ func TestDNSSplitIngressAndRecovery(t *testing.T) {
 		}{
 			{"PIPE." + dnsSuffix, [4]byte{192, 0, 2, 2}},
 			{"child.parent." + dnsSuffix, [4]byte{192, 0, 2, 1}},
-			{"ns1." + dnsSuffix, [4]byte{192, 0, 2, 1}},
+			{"ns1." + dnsSuffix, [4]byte{192, 0, 2, 3}},
 		} {
 			answer := dnsQuestion(t, d, tc.name, dnsmessage.TypeA)
 			if answer.RCode != 0 || len(answer.Answers) != 1 || answer.Answers[0].Header.TTL != 300 || answer.Answers[0].Body.(*dnsmessage.AResource).A != tc.ip {
@@ -56,13 +57,13 @@ func TestDNSSplitIngressAndRecovery(t *testing.T) {
 		if r := dnsQuestion(t, d, "pipe."+dnsSuffix, dnsmessage.TypeAAAA); len(r.Answers) != 0 || len(r.Authorities) != 1 {
 			t.Fatal("AAAA no-data changed")
 		}
-		if r := dnsQuestion(t, d, dnsSuffix, dnsmessage.TypeNS); len(r.Additionals) != 1 || r.Additionals[0].Body.(*dnsmessage.AResource).A != [4]byte{192, 0, 2, 1} {
-			t.Fatal("NS glue moved to the common HTTP ingress")
+		if r := dnsQuestion(t, d, dnsSuffix, dnsmessage.TypeNS); len(r.Additionals) != 1 || r.Additionals[0].Body.(*dnsmessage.AResource).A != [4]byte{192, 0, 2, 3} {
+			t.Fatal("NS glue moved away from the DNS server")
 		}
 	}
 	assertRoutes()
 	d.close()
-	d, err = newDNSControl([]byte(dnsTestBase), path, streamIP, commonIP)
+	d, err = newDNSControl([]byte(base), path, streamIP, commonIP)
 	if err != nil {
 		t.Fatal(err)
 	}

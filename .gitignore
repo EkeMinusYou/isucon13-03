@@ -36,6 +36,7 @@ node_modules/
 tools/browser/.playwright-cli/
 
 # Rebuildable state
+/tools/contest/generated/nginx/
 runs/analysis.duckdb
 runs/analysis.duckdb.lock
 

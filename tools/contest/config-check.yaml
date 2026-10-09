@@ -1,0 +1,19 @@
+# Validate the same per-host nginx assets used by deployment.
+include: [../setup/config-check.yaml]
+deployments:
+  config-check:
+    uploads:
+      - label: host-specific nginx configuration
+        role: nginx
+        local: 'tools/contest/generated/nginx/{host}/'
+        remote: /etc/nginx/
+        excludes: [tls/, ngx_http_js_module.so]
+        delete: true
+        validate: sudo nginx -t
+      - label: MySQL configuration
+        role: mysql
+        local: mysql/
+        remote: /etc/mysql/
+        excludes: [debian.cnf]
+        delete: true
+        validate: sudo mysqld --validate-config
